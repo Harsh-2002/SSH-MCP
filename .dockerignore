@@ -1,0 +1,7 @@
+__pycache__
+.venv
+.git
+.gitignore
+tests/
+integration_test.py
+client_example.py
