@@ -39,68 +39,126 @@ uvicorn ssh_mcp.server_sse:app --host 0.0.0.0 --port 8000
 
 ## Tool Reference
 
-All tools are exposed via MCP. In HTTP modes (Streamable HTTP or SSE), tools operate within the current MCP session.
+All tools are exposed via MCP. Each tool accepts a `target` parameter (default: `"primary"`) to specify which SSH connection to use.
 
-### Core
+### Core Tools
+| Tool | Description |
+|------|-------------|
+| `connect(host, username, port, alias, via)` | Open SSH connection to a remote server |
+| `disconnect(alias)` | Close one or all SSH connections |
+| `identity()` | Get server's public SSH key for authorized_keys |
+| `sync(source_node, source_path, dest_node, dest_path)` | Stream file between two nodes |
 
-- `connect(host, username, port=22, private_key_path=None, password=None, alias="primary", via=None)`
-  - Open an SSH connection and store it under `alias`.
-  - `via` optionally specifies a jump host alias (see Jump Hosts).
-- `disconnect(alias=None)`
-  - Disconnect one alias (e.g. `"web1"`) or all connections if `alias` is omitted.
-- `identity()`
-  - Returns the server’s public SSH key (Ed25519) for `authorized_keys`.
+### Remote Execution
+| Tool | Description |
+|------|-------------|
+| `run(command)` | Execute shell command |
+| `info()` | Get OS/kernel/shell info |
 
-### Remote execution
+### File Operations
+| Tool | Description |
+|------|-------------|
+| `read(path)` | Read remote file content |
+| `write(path, content)` | Create/overwrite remote file |
+| `edit(path, old_text, new_text)` | Safe text replacement |
+| `list(path)` | List directory contents (JSON) |
 
-- `run(command, target="primary")`
-  - Execute a shell command on `target`.
-- `info(target="primary")`
-  - Basic OS/kernel/shell info.
+### Service Management
+| Tool | Description |
+|------|-------------|
+| `inspect_service(name)` | Auto-detect Docker/Systemd/OpenRC status |
+| `list_services(failed_only)` | List running or failed services |
+| `fetch_logs(service_name, lines, error_only)` | Smart log aggregation |
+| `service_action(name, action)` | Start/stop/restart services or containers |
 
-### Files
+### Docker
+| Tool | Description |
+|------|-------------|
+| `docker_ps(all)` | List containers |
+| `docker_logs(container_id, lines)` | Get container logs |
+| `docker_op(container_id, action)` | Start/stop/restart container |
+| `docker_ip(container_name)` | Get container IP address(es) |
+| `docker_find_by_ip(ip_address)` | Find container by IP |
+| `docker_networks()` | List networks and their containers |
 
-- `read(path, target="primary")`
-  - Read a remote file.
-- `write(path, content, target="primary")`
-  - Create/overwrite a remote file.
-- `edit(path, old_text, new_text, target="primary")`
-  - Safe text replacement (fails if `old_text` is missing or ambiguous).
-- `list(path, target="primary")`
-  - List a remote directory (JSON).
+### Database (Container-Aware)
+| Tool | Description |
+|------|-------------|
+| `list_db_containers()` | Find database containers |
+| `db_schema(container, db_type, database)` | Get table list (postgres/mysql/scylladb) |
+| `db_describe_table(container, db_type, table)` | Get table structure |
+| `db_query(container, db_type, query)` | Execute SQL/CQL query |
 
-### Bridging (node ↔ node)
+### Package Manager
+| Tool | Description |
+|------|-------------|
+| `install_package(packages)` | Install packages (apt/apk/dnf auto-detected) |
+| `remove_package(packages)` | Remove packages |
+| `search_package(query)` | Search available packages |
+| `list_installed(grep)` | List installed packages |
 
-- `sync(source_node, source_path, dest_node, dest_path)`
-  - Streams a file from `source_node` to `dest_node` via the MCP server.
-  - This works even if the two nodes cannot reach each other directly.
+### Network & Connectivity
+| Tool | Description |
+|------|-------------|
+| `net_stat(port)` | List listening ports |
+| `net_dump(interface, count, filter)` | Capture network traffic (tcpdump) |
+| `curl(url, method)` | Check URL connectivity |
+| `test_connection(host, port, timeout)` | Verify TCP connectivity between services |
+| `check_port_owner(port)` | Find process listening on port |
+| `scan_ports(host, ports)` | Quick multi-port scan |
 
-### Observability
+### System Diagnostics
+| Tool | Description |
+|------|-------------|
+| `usage()` | System resource usage (CPU/RAM/Disk) |
+| `logs(path, lines, grep)` | Tail log files |
+| `ps(sort_by, limit)` | Top processes |
+| `list_scheduled_tasks()` | Unified cron + systemd timers view |
+| `hunt_zombies()` | Find defunct processes |
+| `hunt_io_hogs(limit)` | Find processes in I/O wait |
+| `check_system_health()` | Quick health overview |
+| `check_oom_events(lines)` | Recent OOM kills from kernel |
 
-- `usage(target="primary")`
-  - Structured system snapshot (loadavg/memory/disk).
-- `logs(path, lines=50, grep=None, target="primary")`
-  - Tail a file with safety limits (useful for large logs).
-- `ps(sort_by="cpu", limit=10, target="primary")`
-  - Top processes by CPU or memory.
+### Disk Analysis
+| Tool | Description |
+|------|-------------|
+| `find_large_files(path, limit, min_size)` | Find largest files recursively |
+| `find_large_folders(path, limit, max_depth)` | Find largest folders |
+| `disk_usage_summary()` | All mounted filesystem usage |
+| `find_old_files(path, days, limit)` | Find stale files |
+| `find_recently_modified(path, minutes, limit)` | Track recent changes |
 
-### Docker (requires Docker installed on the target)
+### Outage Prevention
+| Tool | Description |
+|------|-------------|
+| `check_ssl_cert(host, port)` | Check SSL cert expiry (days until expiration) |
+| `check_dns(hostname)` | Verify DNS resolution from target |
+| `check_ulimits()` | Check resource limits (open files, max processes) |
+| `check_network_errors()` | Check network interfaces for drops/errors |
 
-- `docker_ps(all=False, target="primary")`
-  - Structured container list.
-- `docker_logs(container_id, lines=50, target="primary")`
-  - Tail container logs.
-- `docker_op(container_id, action, target="primary")`
-  - `action` is `start`, `stop`, or `restart`.
+### Fleet Bulk Operations
+Run operations across multiple connected hosts simultaneously. All bulk tools accept a `targets` parameter (list of connection aliases).
 
-### Network
-
-- `net_stat(port=None, target="primary")`
-  - Structured listeners (tries `ss` first, then `netstat`).
-- `net_dump(interface="any", count=20, filter="", target="primary")`
-  - Bounded tcpdump capture (requires `tcpdump` on the target and typically passwordless sudo).
-- `curl(url, method="GET", target="primary")`
-  - Connectivity check from the target.
+| Tool | Description |
+|------|-------------|
+| `bulk_run(command, targets)` | Run same command on multiple hosts |
+| `bulk_read(path, targets)` | Read file from multiple hosts (compare configs) |
+| `bulk_write(path, content, targets)` | Deploy file to multiple hosts |
+| `bulk_edit(path, old, new, targets)` | Mass config update (e.g., Nginx) |
+| `bulk_docker_ps(all, targets)` | Cluster-wide container inventory |
+| `bulk_usage(targets)` | Resource usage from all hosts |
+| `bulk_service(name, action, targets)` | Restart service on all hosts |
+| `bulk_install(packages, targets)` | Install packages fleet-wide |
+| `bulk_connectivity(host, port, targets)` | Verify all hosts can reach a service |
+| `bulk_health(targets)` | System health from all hosts |
+| `bulk_zombies(targets)` | Find zombies fleet-wide |
+| `bulk_disk(targets)` | Disk usage from all hosts |
+| `bulk_remove_package(packages, targets)` | Uninstall packages fleet-wide |
+| `bulk_db_query(container, db_type, query, targets)` | Run SQL/CQL across replicas |
+| `bulk_oom_check(lines, targets)` | OOM events from all hosts |
+| `bulk_find_large_files(path, limit, targets)` | Find disk hogs fleet-wide |
+| `bulk_ssl_check(host, port, targets)` | SSL cert expiry from all hosts |
+| `bulk_dns_check(hostname, targets)` | DNS resolution from all hosts |
 
 ## Multi-node usage
 
@@ -206,18 +264,25 @@ This server solves this with three strategies:
 
 ```text
 src/ssh_mcp/
-├── server.py           # stdio server (FastMCP)
-├── server_sse.py       # SSE server (FastMCP)
-├── server_http.py      # Streamable HTTP server (FastMCP)
-├── server_all.py       # Combined HTTP server (/mcp + /sse)
-├── ssh_manager.py      # multi-connection SSH engine + sync + jump host
-├── session_store.py    # connection pooling for stateless agents
+├── server.py             # stdio server (FastMCP)
+├── server_sse.py         # SSE server (FastMCP)
+├── server_http.py        # Streamable HTTP server (FastMCP)
+├── server_all.py         # Combined HTTP server (/mcp + /sse)
+├── ssh_manager.py        # multi-connection SSH engine + sync + jump host
+├── session_store.py      # connection pooling for stateless agents
 └── tools/
-    ├── files.py        # read/write/edit/list wrappers
-    ├── system.py       # run/info wrappers
-    ├── monitoring.py   # usage/logs/ps
-    ├── docker.py       # docker_ps/docker_logs/docker_op
-    └── network.py      # net_stat/net_dump/curl
+    ├── base.py           # OS/init system detection helpers
+    ├── files.py          # read/write/edit/list
+    ├── files_advanced.py # large file finder, disk analysis
+    ├── system.py         # run/info
+    ├── monitoring.py     # usage/logs/ps
+    ├── docker.py         # containers, IPs, networks
+    ├── network.py        # net_stat/net_dump/curl
+    ├── net_debug.py      # connectivity testing
+    ├── diagnostics.py    # scheduled tasks, zombies, OOM
+    ├── services_universal.py  # Systemd/OpenRC/Docker services
+    ├── db.py             # database queries (postgres/mysql/scylla)
+    └── pkg.py            # package manager (apt/apk/dnf)
 ```
 
 ## Notes
