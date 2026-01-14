@@ -4,16 +4,25 @@ import asyncssh
 import sys
 import os
 from typing import Optional, List, Dict, Any
+from contextlib import asynccontextmanager
 
 logger = logging.getLogger("ssh-mcp")
 
 class SSHManager:
     def __init__(self, allowed_root: str = "/"):
+        # Reduce very verbose default logging from asyncssh unless explicitly enabled
+        if os.getenv("SSH_MCP_DEBUG_ASYNCSSH") not in {"1", "true", "yes", "on"}:
+            logging.getLogger("asyncssh").setLevel(logging.WARNING)
+
         self.connections: Dict[str, asyncssh.SSHClientConnection] = {}
         self.cwds: Dict[str, str] = {}
         self.primary_alias: Optional[str] = None
-        
+
+        # Global lock (connect/disconnect + credential updates)
         self._lock = asyncio.Lock()
+
+        # Per-alias lock to keep cwd/state consistent per target
+        self._alias_locks: Dict[str, asyncio.Lock] = {}
         
         # State persistence for auto-reconnect
         self._credentials: Dict[str, Dict[str, Any]] = {}
@@ -35,6 +44,29 @@ class SSHManager:
             logger.info(f"Could not use /data ({e}), falling back to local storage: {home_key}")
             self.system_key_path = home_key
             self._ensure_system_key()
+
+    def _get_alias_lock(self, alias: str) -> asyncio.Lock:
+        lock = self._alias_locks.get(alias)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._alias_locks[alias] = lock
+        return lock
+
+    @asynccontextmanager
+    async def _alias_lock_ctx(self, aliases: List[str]):
+        names = sorted(dict.fromkeys(aliases))
+        locks = [self._get_alias_lock(name) for name in names]
+        try:
+            for lock in locks:
+                await lock.acquire()
+            yield
+        finally:
+            for lock in reversed(locks):
+                lock.release()
+
+    def _creds_equal(self, existing: Dict[str, Any], new: Dict[str, Any]) -> bool:
+        fields = ["host", "username", "port", "private_key_path", "password", "via"]
+        return all(existing.get(k) == new.get(k) for k in fields)
 
     def _ensure_system_key(self):
         """Ensure the global system key exists."""
@@ -95,6 +127,13 @@ class SSHManager:
         
         return abs_path
 
+    def _get_alias_lock(self, alias: str) -> asyncio.Lock:
+        lock = self._alias_locks.get(alias)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._alias_locks[alias] = lock
+        return lock
+
     async def connect(self, host: str, username: str, port: int = 22, 
                       private_key_path: Optional[str] = None, 
                       password: Optional[str] = None,
@@ -121,8 +160,7 @@ class SSHManager:
                     used_key_path = self.system_key_path
                     logger.info(f"Using system key for auth: {self.system_key_path}")
             
-            # Save credentials for later
-            self._credentials[alias] = {
+            new_creds = {
                 "host": host,
                 "username": username,
                 "port": port,
@@ -130,6 +168,14 @@ class SSHManager:
                 "password": password,
                 "via": via,
             }
+
+            existing = self._credentials.get(alias)
+            if existing and alias in self.connections and self._creds_equal(existing, new_creds):
+                logger.info(f"Alias '{alias}' already connected to {username}@{host}. Reusing existing session.")
+                return f"Already connected to {username}@{host} (alias: {alias})"
+
+            # Save credentials for later
+            self._credentials[alias] = new_creds
             logger.info(f"Connecting to {username}@{host}:{port} as '{alias}' (via={via})...")
             msg = await self._connect_internal(alias)
             
@@ -258,63 +304,64 @@ class SSHManager:
     async def run_result(self, command: str, retry: bool = True, target: Optional[str] = None) -> Dict[str, Any]:
         """Run a command and return structured results."""
         alias = self._resolve_alias(target)
-        await self._ensure_connection(alias)
+        async with self._alias_lock_ctx([alias]):
+            await self._ensure_connection(alias)
 
-        conn = self.connections.get(alias)
-        if not conn:
-            raise ConnectionError(f"Not connected to '{alias}'.")
+            conn = self.connections.get(alias)
+            if not conn:
+                raise ConnectionError(f"Not connected to '{alias}'.")
 
-        cwd = self.cwds.get(alias, ".")
-        logger.info(f"Executing command on '{alias}': {command}")
+            cwd = self.cwds.get(alias, ".")
+            logger.info(f"Executing command on '{alias}': {command}")
 
-        TIMEOUT = 60.0
-        cwd_delimiter = "___MCP_CWD_CAPTURE___"
+            TIMEOUT = 60.0
+            cwd_delimiter = "___MCP_CWD_CAPTURE___"
 
-        wrapped_command = (
-            f'cd "{cwd}" && '
-            f'( {command} ); LAST_EXIT_CODE=$?; '
-            f'echo "{cwd_delimiter}"; pwd; '
-            f'exit $LAST_EXIT_CODE'
-        )
+            wrapped_command = (
+                f'cd "{cwd}" && '
+                f'( {command} ); LAST_EXIT_CODE=$?; '
+                f'echo "{cwd_delimiter}"; pwd; '
+                f'exit $LAST_EXIT_CODE'
+            )
 
-        try:
-            result = await asyncio.wait_for(conn.run(wrapped_command), timeout=TIMEOUT)
-        except (asyncssh.ConnectionLost, BrokenPipeError, ConnectionResetError):
-            if retry:
-                logger.warning(f"SSH Connection '{alias}' lost during execution. Reconnecting...")
-                if alias in self.connections:
-                    del self.connections[alias]
-                await self._ensure_connection(alias)
-                return await self.run_result(command, retry=False, target=alias)
-            raise
-        except asyncio.TimeoutError:
-            logger.error(f"Command timed out: {command}")
-            raise TimeoutError(f"Command timed out after {TIMEOUT} seconds.")
-        except Exception as e:
-            logger.error(f"Execution error: {e}")
-            raise RuntimeError(f"SSH Execution Error: {str(e)}")
+            try:
+                result = await asyncio.wait_for(conn.run(wrapped_command), timeout=TIMEOUT)
+            except (asyncssh.ConnectionLost, BrokenPipeError, ConnectionResetError):
+                if retry:
+                    logger.warning(f"SSH Connection '{alias}' lost during execution. Reconnecting...")
+                    if alias in self.connections:
+                        del self.connections[alias]
+                    await self._ensure_connection(alias)
+                    return await self.run_result(command, retry=False, target=alias)
+                raise
+            except asyncio.TimeoutError:
+                logger.error(f"Command timed out: {command}")
+                raise TimeoutError(f"Command timed out after {TIMEOUT} seconds.")
+            except Exception as e:
+                logger.error(f"Execution error: {e}")
+                raise RuntimeError(f"SSH Execution Error: {str(e)}")
 
-        stdout = self._coerce_text(result.stdout)
-        stderr = self._coerce_text(result.stderr)
-        exit_code = result.exit_status
+            stdout = self._coerce_text(result.stdout)
+            stderr = self._coerce_text(result.stderr)
+            exit_code = result.exit_status
 
-        # Update CWD using delimiter
-        clean_stdout = stdout
-        if cwd_delimiter in stdout:
-            parts = stdout.split(cwd_delimiter)
-            clean_stdout = parts[0]
-            if len(parts) > 1:
-                candidate = parts[1].strip()
-                if candidate:
-                    self.cwds[alias] = candidate
+            # Update CWD using delimiter
+            clean_stdout = stdout
+            if cwd_delimiter in stdout:
+                parts = stdout.split(cwd_delimiter)
+                clean_stdout = parts[0]
+                if len(parts) > 1:
+                    candidate = parts[1].strip()
+                    if candidate:
+                        self.cwds[alias] = candidate
 
-        return {
-            "target": alias,
-            "stdout": clean_stdout,
-            "stderr": stderr,
-            "exit_code": exit_code,
-            "cwd": self.cwds.get(alias, cwd),
-        }
+            return {
+                "target": alias,
+                "stdout": clean_stdout,
+                "stderr": stderr,
+                "exit_code": exit_code,
+                "cwd": self.cwds.get(alias, cwd),
+            }
 
     async def execute(self, command: str, retry: bool = True, target: Optional[str] = None) -> str:
         """Run a command and return a human-readable string."""
@@ -341,110 +388,115 @@ class SSHManager:
 
     async def list_files(self, path: str, retry: bool = True, target: Optional[str] = None) -> List[Dict[str, Any]]:
         alias = self._resolve_alias(target)
-        try:
-            await self._ensure_connection(alias)
-            safe_path = self._validate_path(path, alias)
-            logger.info(f"Listing directory on '{alias}': {safe_path}")
-            
-            conn = self.connections[alias]
-            async with conn.start_sftp_client() as sftp:
-                files = await sftp.readdir(safe_path)
-                result = []
-                for f in files:
-                    ftype = "dir" if f.attrs.permissions and (f.attrs.permissions & 0o40000) else "file"
-                    result.append({
-                        "name": str(f.filename),
-                        "type": ftype,
-                        "size": f.attrs.size,
-                        "permissions": oct(f.attrs.permissions) if f.attrs.permissions else "unknown"
-                    })
-                return result
-        except (asyncssh.ConnectionLost, BrokenPipeError):
-            if retry:
-                if alias in self.connections:
-                     del self.connections[alias]
+        async with self._alias_lock_ctx([alias]):
+            try:
                 await self._ensure_connection(alias)
-                return await self.list_files(path, retry=False, target=alias)
-            raise
+                safe_path = self._validate_path(path, alias)
+                logger.info(f"Listing directory on '{alias}': {safe_path}")
+
+                conn = self.connections[alias]
+                async with conn.start_sftp_client() as sftp:
+                    files = await sftp.readdir(safe_path)
+                    result = []
+                    for f in files:
+                        ftype = "dir" if f.attrs.permissions and (f.attrs.permissions & 0o40000) else "file"
+                        result.append({
+                            "name": str(f.filename),
+                            "type": ftype,
+                            "size": f.attrs.size,
+                            "permissions": oct(f.attrs.permissions) if f.attrs.permissions else "unknown"
+                        })
+                    return result
+            except (asyncssh.ConnectionLost, BrokenPipeError):
+                if retry:
+                    if alias in self.connections:
+                        del self.connections[alias]
+                    await self._ensure_connection(alias)
+                    return await self.list_files(path, retry=False, target=alias)
+                raise
 
     async def read_file(self, path: str, retry: bool = True, target: Optional[str] = None) -> str:
         alias = self._resolve_alias(target)
-        try:
-            await self._ensure_connection(alias)
-            safe_path = self._validate_path(path, alias)
-            logger.info(f"Reading file on '{alias}': {safe_path}")
-            
-            conn = self.connections[alias]
-            async with conn.start_sftp_client() as sftp:
-                async with sftp.open(safe_path, 'r') as f:
-                    content = await f.read()
-                    if isinstance(content, bytes):
-                        return content.decode('utf-8')
-                    return str(content)
-        except (asyncssh.ConnectionLost, BrokenPipeError):
-            if retry:
-                if alias in self.connections:
-                     del self.connections[alias]
+        async with self._alias_lock_ctx([alias]):
+            try:
                 await self._ensure_connection(alias)
-                return await self.read_file(path, retry=False, target=alias)
-            raise
+                safe_path = self._validate_path(path, alias)
+                logger.info(f"Reading file on '{alias}': {safe_path}")
+
+                conn = self.connections[alias]
+                async with conn.start_sftp_client() as sftp:
+                    async with sftp.open(safe_path, 'r') as f:
+                        content = await f.read()
+                        if isinstance(content, bytes):
+                            return content.decode('utf-8')
+                        return str(content)
+            except (asyncssh.ConnectionLost, BrokenPipeError):
+                if retry:
+                    if alias in self.connections:
+                        del self.connections[alias]
+                    await self._ensure_connection(alias)
+                    return await self.read_file(path, retry=False, target=alias)
+                raise
 
     async def write_file(self, path: str, content: str, retry: bool = True, target: Optional[str] = None) -> str:
         alias = self._resolve_alias(target)
-        try:
-            await self._ensure_connection(alias)
-            safe_path = self._validate_path(path, alias)
-            logger.info(f"Writing file on '{alias}': {safe_path} ({len(content)} bytes)")
-            
-            conn = self.connections[alias]
-            async with conn.start_sftp_client() as sftp:
-                async with sftp.open(safe_path, 'w') as f:
-                    await f.write(content)
-            return f"Successfully wrote to {safe_path}"
-        except (asyncssh.ConnectionLost, BrokenPipeError):
-            if retry:
-                if alias in self.connections:
-                     del self.connections[alias]
+        async with self._alias_lock_ctx([alias]):
+            try:
                 await self._ensure_connection(alias)
-                return await self.write_file(path, content, retry=False, target=alias)
-            raise
+                safe_path = self._validate_path(path, alias)
+                logger.info(f"Writing file on '{alias}': {safe_path} ({len(content)} bytes)")
+
+                conn = self.connections[alias]
+                async with conn.start_sftp_client() as sftp:
+                    async with sftp.open(safe_path, 'w') as f:
+                        await f.write(content)
+                return f"Successfully wrote to {safe_path}"
+            except (asyncssh.ConnectionLost, BrokenPipeError):
+                if retry:
+                    if alias in self.connections:
+                        del self.connections[alias]
+                    await self._ensure_connection(alias)
+                    return await self.write_file(path, content, retry=False, target=alias)
+                raise
 
     async def sync(self, source_node: str, source_path: str, dest_node: str, dest_path: str) -> str:
         """Stream file from source_node to dest_node efficiently."""
-        
-        # Verify both connections
-        await self._ensure_connection(source_node)
-        await self._ensure_connection(dest_node)
 
-        conn_src = self.connections[source_node]
-        conn_dest = self.connections[dest_node]
-        
-        # Validate paths (basic check)
-        src_safe = self._validate_path(source_path, source_node)
-        dest_safe = self._validate_path(dest_path, dest_node)
-        
-        logger.info(f"Syncing {source_node}:{src_safe} -> {dest_node}:{dest_safe}")
+        aliases = [source_node, dest_node]
+        async with self._alias_lock_ctx(aliases):
+            # Verify both connections
+            await self._ensure_connection(source_node)
+            await self._ensure_connection(dest_node)
 
-        try:
-            async with conn_src.start_sftp_client() as sftp_src, \
-                       conn_dest.start_sftp_client() as sftp_dest:
-                
-                # Open source for reading
-                async with sftp_src.open(src_safe, 'rb') as f_src:
-                    # Open dest for writing
-                    async with sftp_dest.open(dest_safe, 'wb') as f_dest:
-                        # Stream data in 64KB chunks
-                        CHUNK_SIZE = 64 * 1024
-                        total_bytes = 0
-                        while True:
-                            data = await f_src.read(CHUNK_SIZE)
-                            if not data:
-                                break
-                            await f_dest.write(data)
-                            total_bytes += len(data)
-                            
-            return f"Successfully synced {total_bytes} bytes from {source_node} to {dest_node}."
+            conn_src = self.connections[source_node]
+            conn_dest = self.connections[dest_node]
 
-        except Exception as e:
-            logger.error(f"Sync failed: {e}")
-            raise RuntimeError(f"Sync failed: {str(e)}")
+            # Validate paths (basic check)
+            src_safe = self._validate_path(source_path, source_node)
+            dest_safe = self._validate_path(dest_path, dest_node)
+
+            logger.info(f"Syncing {source_node}:{src_safe} -> {dest_node}:{dest_safe}")
+
+            try:
+                async with conn_src.start_sftp_client() as sftp_src, \
+                           conn_dest.start_sftp_client() as sftp_dest:
+
+                    # Open source for reading
+                    async with sftp_src.open(src_safe, 'rb') as f_src:
+                        # Open dest for writing
+                        async with sftp_dest.open(dest_safe, 'wb') as f_dest:
+                            # Stream data in 64KB chunks
+                            CHUNK_SIZE = 64 * 1024
+                            total_bytes = 0
+                            while True:
+                                data = await f_src.read(CHUNK_SIZE)
+                                if not data:
+                                    break
+                                await f_dest.write(data)
+                                total_bytes += len(data)
+
+                return f"Successfully synced {total_bytes} bytes from {source_node} to {dest_node}."
+
+            except Exception as e:
+                logger.error(f"Sync failed: {e}")
+                raise RuntimeError(f"Sync failed: {str(e)}")

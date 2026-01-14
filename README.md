@@ -153,8 +153,34 @@ You can also provide `password` or `private_key_path` per connection.
 | :--- | :--- | :--- |
 | `PORT` | The port the HTTP server listens on. | `8000` |
 | `ALLOWED_ROOT` | Restricts file operations to a specific path. | `/` (unrestricted) |
+| `SSH_MCP_GLOBAL_STATE` | If set to `true`, share connections across sessions. | `false` |
+| `SSH_MCP_SESSION_HEADER` | Header to use for smart session caching. | `X-Session-Key` |
+| `SSH_MCP_SESSION_TIMEOUT` | Idle timeout for cached sessions (seconds). | `300` (5 mins) |
 
 ## Architecture
+
+### Session Persistence Strategies
+
+A common challenge with AI Agents is that they are often "stateless" HTTP clients—they open a new connection for every request. By default, this would cause the SSH connection to close and reopen constantly, breaking state (like `cd` commands).
+
+This server solves this with three strategies:
+
+#### 1. Standard Mode (Default)
+*   **Behavior**: SSH state is tied to the MCP connection.
+*   **Best For**: Desktop apps (Claude Desktop) or agents that keep a persistent WebSocket/SSE connection.
+
+#### 2. Smart Header Mode (Recommended for APIs)
+*   **Behavior**: The server caches SSH sessions based on a client-provided header (default: `X-Session-Key`).
+*   **How it works**:
+    1. Agent sends `X-Session-Key: my-agent-1` with every request.
+    2. Server checks its cache. If a session exists for `my-agent-1`, it is reused.
+    3. If the agent goes silent for 5 minutes (configurable), the connection is automatically closed.
+*   **Best For**: Custom AI Agents, LangChain, or REST-based clients.
+
+#### 3. Global Mode (Force Override)
+*   **Behavior**: A single global SSH manager is used for *everyone*.
+*   **Config**: Set `SSH_MCP_GLOBAL_STATE=true`.
+*   **Best For**: Single-user private instances where you don't want to configure headers.
 
 ### Data flow (Streamable HTTP)
 
@@ -169,8 +195,12 @@ You can also provide `password` or `private_key_path` per connection.
 
 ### State model
 
-- Each MCP session gets its own `SSHManager` instance.
-- Each `SSHManager` can hold multiple SSH connections keyed by `alias`.
+- The server uses the selected strategy (Standard, Header, or Global) to determine which `SSHManager` to use.
+- Each `SSHManager` holds multiple SSH connections keyed by `alias`.
+
+### Stateless agents
+
+*Removed legacy section - see "Session Persistence Strategies" above.*
 
 ### Code layout
 
@@ -181,6 +211,7 @@ src/ssh_mcp/
 ├── server_http.py      # Streamable HTTP server (FastMCP)
 ├── server_all.py       # Combined HTTP server (/mcp + /sse)
 ├── ssh_manager.py      # multi-connection SSH engine + sync + jump host
+├── session_store.py    # connection pooling for stateless agents
 └── tools/
     ├── files.py        # read/write/edit/list wrappers
     ├── system.py       # run/info wrappers
