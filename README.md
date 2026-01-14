@@ -1,6 +1,6 @@
 # SSH MCP Server
 
-A Model Context Protocol (MCP) server that lets an agent connect to remote machines over SSH and perform common DevOps tasks. It supports both local execution (stdio) and remote deployment (SSE over HTTP).
+A Model Context Protocol (MCP) server that lets an agent connect to remote machines over SSH and perform common DevOps tasks. It supports local execution (stdio) and remote deployment over HTTP (Streamable HTTP and SSE).
 
 ## Quickstart
 
@@ -15,7 +15,9 @@ docker volume create ssh-data
 docker run -p 8000:8000 -v ssh-data:/data --name ssh-mcp ssh-mcp
 ```
 
-SSE endpoint: `http://localhost:8000/sse`
+Streamable HTTP endpoint: `http://localhost:8000/mcp`
+
+SSE endpoint (optional): `http://localhost:8000/sse`
 
 ### Local
 
@@ -25,13 +27,16 @@ pip install .
 # Stdio mode (for local MCP hosts)
 python -m ssh_mcp
 
-# SSE mode
+# Streamable HTTP mode (recommended)
+uvicorn ssh_mcp.server_http:app --host 0.0.0.0 --port 8000
+
+# SSE mode (optional)
 uvicorn ssh_mcp.server_sse:app --host 0.0.0.0 --port 8000
 ```
 
 ## Tool Reference
 
-All tools are exposed via MCP. In SSE mode, tools operate within the current MCP session.
+All tools are exposed via MCP. In HTTP modes (Streamable HTTP or SSE), tools operate within the current MCP session.
 
 ### Core
 
@@ -70,7 +75,7 @@ All tools are exposed via MCP. In SSE mode, tools operate within the current MCP
 ### Observability
 
 - `usage(target="primary")`
-  - Quick system snapshot (load average, memory, disk).
+  - Structured system snapshot (loadavg/memory/disk).
 - `logs(path, lines=50, grep=None, target="primary")`
   - Tail a file with safety limits (useful for large logs).
 - `ps(sort_by="cpu", limit=10, target="primary")`
@@ -79,7 +84,7 @@ All tools are exposed via MCP. In SSE mode, tools operate within the current MCP
 ### Docker (requires Docker installed on the target)
 
 - `docker_ps(all=False, target="primary")`
-  - List containers.
+  - Structured container list.
 - `docker_logs(container_id, lines=50, target="primary")`
   - Tail container logs.
 - `docker_op(container_id, action, target="primary")`
@@ -88,7 +93,7 @@ All tools are exposed via MCP. In SSE mode, tools operate within the current MCP
 ### Network
 
 - `net_stat(port=None, target="primary")`
-  - List listening ports (tries `ss` first, then `netstat`).
+  - Structured listeners (tries `ss` first, then `netstat`).
 - `net_dump(interface="any", count=20, filter="", target="primary")`
   - Bounded tcpdump capture (requires `tcpdump` on the target and typically passwordless sudo).
 - `curl(url, method="GET", target="primary")`
@@ -147,6 +152,11 @@ You can also provide `password` or `private_key_path` per connection.
 | `ALLOWED_ROOT` | Restricts file operations to a specific path. | `/` (unrestricted) |
 
 ## Architecture
+
+### Data flow (Streamable HTTP)
+
+- Clients connect to the Streamable HTTP endpoint: `/mcp`
+- Tool calls and results are carried over the MCP Streamable HTTP transport
 
 ### Data flow (SSE)
 

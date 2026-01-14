@@ -189,7 +189,7 @@ class SSHManager:
             
             # Reset CWD
             result = await conn.run("pwd")
-            self.cwds[alias] = result.stdout.strip()
+            self.cwds[alias] = self._coerce_text(result.stdout).strip()
             
             msg = f"Connected to {c['username']}@{c['host']} (alias: {alias})"
             logger.info(msg)

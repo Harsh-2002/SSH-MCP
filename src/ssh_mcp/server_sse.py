@@ -4,6 +4,7 @@ from .tools import files, system, monitoring, docker, network
 import uvicorn
 import os
 import logging
+from typing import Any
 
 # Configure Logging
 logging.basicConfig(
@@ -137,14 +138,15 @@ async def info(ctx: Context, target: str = "primary") -> str:
 # --- Monitoring Tools ---
 
 @mcp.tool()
-async def usage(ctx: Context, target: str = "primary") -> str:
+async def usage(ctx: Context, target: str = "primary") -> dict[str, Any]:
     """Get system resource usage (CPU, RAM, Disk)."""
     manager = get_session_manager(ctx)
-    if not manager: return "Error: Not connected."
+    if not manager:
+        return {"error": "not_connected", "target": target}
     try:
         return await monitoring.usage(manager, target)
     except Exception as e:
-        return f"Error getting usage: {str(e)}"
+        return {"error": str(e), "target": target}
 
 @mcp.tool()
 async def logs(ctx: Context, path: str, lines: int = 50, grep: str = None, target: str = "primary") -> str:
@@ -169,14 +171,15 @@ async def ps(ctx: Context, sort_by: str = "cpu", limit: int = 10, target: str = 
 # --- Docker Tools ---
 
 @mcp.tool()
-async def docker_ps(ctx: Context, all: bool = False, target: str = "primary") -> str:
+async def docker_ps(ctx: Context, all: bool = False, target: str = "primary") -> dict[str, Any]:
     """List Docker containers."""
     manager = get_session_manager(ctx)
-    if not manager: return "Error: Not connected."
+    if not manager:
+        return {"error": "not_connected", "target": target, "all": all}
     try:
         return await docker.docker_ps(manager, all, target)
     except Exception as e:
-        return f"Error listing containers: {str(e)}"
+        return {"error": str(e), "target": target, "all": all}
 
 @mcp.tool()
 async def docker_logs(ctx: Context, container_id: str, lines: int = 50, target: str = "primary") -> str:
@@ -201,14 +204,15 @@ async def docker_op(ctx: Context, container_id: str, action: str, target: str = 
 # --- Network Tools ---
 
 @mcp.tool()
-async def net_stat(ctx: Context, port: int = None, target: str = "primary") -> str:
+async def net_stat(ctx: Context, port: int | None = None, target: str = "primary") -> dict[str, Any]:
     """Check for listening ports (uses ss or netstat)."""
     manager = get_session_manager(ctx)
-    if not manager: return "Error: Not connected."
+    if not manager:
+        return {"error": "not_connected", "target": target, "port": port}
     try:
         return await network.net_stat(manager, port, target)
     except Exception as e:
-        return f"Error checking ports: {str(e)}"
+        return {"error": str(e), "target": target, "port": port}
 
 @mcp.tool()
 async def net_dump(ctx: Context, interface: str = "any", count: int = 20, filter: str = "", target: str = "primary") -> str:

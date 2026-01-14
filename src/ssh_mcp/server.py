@@ -2,6 +2,7 @@ from mcp.server.fastmcp import FastMCP
 from .ssh_manager import SSHManager
 from .tools import files, system, monitoring, docker, network
 import logging
+from typing import Any
 
 # Configure Logging
 logging.basicConfig(
@@ -112,12 +113,12 @@ async def sync(
 # --- Monitoring Tools ---
 
 @mcp.tool()
-async def usage(target: str | None = None) -> str:
+async def usage(target: str | None = None) -> dict[str, Any]:
     """Get system resource usage (CPU, RAM, Disk)."""
     try:
         return await monitoring.usage(ssh, target)
     except Exception as e:
-        return f"Error getting usage: {str(e)}"
+        return {"error": str(e), "target": target}
 
 @mcp.tool()
 async def logs(path: str, lines: int = 50, grep: str | None = None, target: str | None = None) -> str:
@@ -138,12 +139,12 @@ async def ps(sort_by: str = "cpu", limit: int = 10, target: str | None = None) -
 # --- Docker Tools ---
 
 @mcp.tool()
-async def docker_ps(all: bool = False, target: str | None = None) -> str:
+async def docker_ps(all: bool = False, target: str | None = None) -> dict[str, Any]:
     """List Docker containers."""
     try:
         return await docker.docker_ps(ssh, all, target)
     except Exception as e:
-        return f"Error listing containers: {str(e)}"
+        return {"error": str(e), "target": target, "all": all}
 
 @mcp.tool()
 async def docker_logs(container_id: str, lines: int = 50, target: str | None = None) -> str:
@@ -164,12 +165,12 @@ async def docker_op(container_id: str, action: str, target: str | None = None) -
 # --- Network Tools ---
 
 @mcp.tool()
-async def net_stat(port: int | None = None, target: str | None = None) -> str:
+async def net_stat(port: int | None = None, target: str | None = None) -> dict[str, Any]:
     """Check for listening ports (uses ss or netstat)."""
     try:
         return await network.net_stat(ssh, port, target)
     except Exception as e:
-        return f"Error checking ports: {str(e)}"
+        return {"error": str(e), "target": target, "port": port}
 
 @mcp.tool()
 async def net_dump(interface: str = "any", count: int = 20, filter: str = "", target: str | None = None) -> str:

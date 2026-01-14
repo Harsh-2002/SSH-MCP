@@ -1,34 +1,77 @@
+from __future__ import annotations
+
 from ..ssh_manager import SSHManager
-import json
 
-async def usage(manager: SSHManager, target: str | None = None) -> str:
-    """
-    Get system resource usage (CPU, RAM, Disk).
-    Uses standard Linux commands available on almost all distros.
-    """
-    # 1. CPU Load (via uptime)
-    uptime_output = await manager.execute("uptime", target=target)
-    # Output ex: " 14:00:00 up 10 days,  4:00,  2 users,  load average: 0.05, 0.10, 0.15"
-    
-    # 2. Memory (via free -m or /proc/meminfo)
-    # We prefer /proc/meminfo for parsing stability
-    mem_output = await manager.execute("cat /proc/meminfo | grep -E 'MemTotal|MemAvailable|MemFree'", target=target)
-    
-    # 3. Disk (via df -h /)
-    disk_output = await manager.execute("df -h / | tail -n 1", target=target)
-    
-    return f"""
-System Status:
----
-[Load Average]
-{uptime_output.strip()}
+from typing import Any
 
-[Memory Stats]
-{mem_output.strip()}
 
-[Disk Usage (/)]
-{disk_output.strip()}
-"""
+def _parse_meminfo_kb(meminfo: str) -> dict[str, int]:
+    out: dict[str, int] = {}
+    for line in meminfo.splitlines():
+        if ":" not in line:
+            continue
+        key, rest = line.split(":", 1)
+        rest = rest.strip()
+        if not rest:
+            continue
+        parts = rest.split()
+        try:
+            out[key] = int(parts[0])
+        except ValueError:
+            continue
+    return out
+
+
+def _parse_df_bytes(df_line: str) -> dict[str, Any]:
+    # df -P -B1 / output line: Filesystem 1024-blocks Used Available Capacity Mounted on
+    parts = df_line.split()
+    if len(parts) < 6:
+        return {"raw": df_line}
+    filesystem, total, used, avail, capacity, mount = parts[:6]
+    return {
+        "filesystem": filesystem,
+        "total_bytes": int(total),
+        "used_bytes": int(used),
+        "available_bytes": int(avail),
+        "used_percent": int(capacity.strip("%")) if capacity.endswith("%") else None,
+        "mount": mount,
+    }
+
+
+async def usage(manager: SSHManager, target: str | None = None) -> dict[str, Any]:
+    """Structured system snapshot (load, memory, disk)."""
+
+    load_res = await manager.run_result("cat /proc/loadavg", target=target)
+    mem_res = await manager.run_result("cat /proc/meminfo", target=target)
+    disk_res = await manager.run_result("df -P -B1 / | tail -n 1", target=target)
+
+    load_parts = load_res["stdout"].strip().split()
+    load_1 = float(load_parts[0]) if len(load_parts) > 0 else None
+    load_5 = float(load_parts[1]) if len(load_parts) > 1 else None
+    load_15 = float(load_parts[2]) if len(load_parts) > 2 else None
+
+    mem_kb = _parse_meminfo_kb(mem_res["stdout"])
+    mem_total_kb = mem_kb.get("MemTotal")
+    mem_avail_kb = mem_kb.get("MemAvailable")
+
+    memory: dict[str, Any] = {
+        "mem_total_bytes": mem_total_kb * 1024 if mem_total_kb is not None else None,
+        "mem_available_bytes": mem_avail_kb * 1024 if mem_avail_kb is not None else None,
+    }
+
+    if mem_total_kb is not None and mem_avail_kb is not None and mem_total_kb > 0:
+        used_kb = mem_total_kb - mem_avail_kb
+        memory["mem_used_bytes"] = used_kb * 1024
+        memory["mem_used_percent"] = round((used_kb / mem_total_kb) * 100, 2)
+
+    disk = _parse_df_bytes(disk_res["stdout"].strip())
+
+    return {
+        "target": load_res["target"],
+        "loadavg": {"1": load_1, "5": load_5, "15": load_15},
+        "memory": memory,
+        "disk": disk,
+    }
 
 async def logs(manager: SSHManager, path: str, lines: int = 50, grep: str | None = None, target: str | None = None) -> str:
     """

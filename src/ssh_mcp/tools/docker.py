@@ -1,4 +1,10 @@
+from __future__ import annotations
+
 from ..ssh_manager import SSHManager
+
+import json
+from typing import Any
+
 
 async def check_tool_availability(manager: SSHManager, tool: str, target: str | None = None) -> bool:
     """Checks if a command-line tool is available on the remote system."""
@@ -6,21 +12,26 @@ async def check_tool_availability(manager: SSHManager, tool: str, target: str | 
     output = await manager.execute(check_cmd, target=target)
     return "present" in output
 
-async def docker_ps(manager: SSHManager, all: bool = False, target: str | None = None) -> str:
-    """
-    List Docker containers.
-    Returns structured JSON output if possible, or standard table otherwise.
-    """
+
+async def docker_ps(manager: SSHManager, all: bool = False, target: str | None = None) -> dict[str, Any]:
+    """List Docker containers as structured data."""
     if not await check_tool_availability(manager, "docker", target=target):
-        return "Error: Docker command not found."
+        return {"error": "docker_not_found", "target": target}
 
     flag = "-a" if all else ""
-    
-    # We use a custom format to make it easier for the LLM to parse
-    # Format: ID | Image | Status | Names
-    cmd = f"docker ps {flag} --format 'table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Names}}'"
-    
-    return await manager.execute(cmd, target=target)
+    res = await manager.run_result(f"docker ps {flag} --no-trunc --format '{{{{json .}}}}'", target=target)
+
+    containers: list[dict[str, Any]] = []
+    for line in res["stdout"].splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            containers.append(json.loads(line))
+        except Exception:
+            containers.append({"raw": line})
+
+    return {"target": res["target"], "containers": containers, "all": all}
 
 async def docker_logs(manager: SSHManager, container_id: str, lines: int = 50, target: str | None = None) -> str:
     """Get logs for a specific container."""
