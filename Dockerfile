@@ -29,4 +29,4 @@ USER appuser
 EXPOSE $PORT
 
 # Run Streamable HTTP server (/mcp)
-CMD ["uvicorn", "ssh_mcp.server_all:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "ssh.server_all:app", "--host", "0.0.0.0", "--port", "8000"]

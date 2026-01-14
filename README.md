@@ -24,10 +24,10 @@ HTTP endpoint:
 pip install .
 
 # Stdio mode (for local MCP hosts)
-python -m ssh_mcp
+python -m ssh
 
 # HTTP server (Streamable HTTP transport)
-uvicorn ssh_mcp.server_all:app --host 0.0.0.0 --port 8000
+uvicorn ssh.server_all:app --host 0.0.0.0 --port 8000
 ```
 
 ## Tool Reference
@@ -250,7 +250,7 @@ This server solves this with three strategies:
 ### Code layout
 
 ```text
-src/ssh_mcp/
+src/ssh/
 ├── server.py             # stdio server (FastMCP)
 ├── mcp_server.py         # FastMCP server instance and tool definitions
 ├── server_all.py         # HTTP server (Streamable HTTP /mcp)

@@ -664,4 +664,4 @@ async def check_network_errors(ctx: Context, target: str = "primary") -> dict[st
 
 # --- App Entry Point ---
 # This module is imported by server_all.py which handles the actual HTTP transport
-# For standalone usage, use: uvicorn ssh_mcp.server_all:app --host 0.0.0.0 --port 8000
+# For standalone usage, use: uvicorn ssh.server_all:app --host 0.0.0.0 --port 8000
