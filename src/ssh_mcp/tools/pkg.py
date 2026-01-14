@@ -46,7 +46,7 @@ async def install_package(manager, packages: list[str], target: str = "primary")
         return result
     
     try:
-        result["output"] = await manager.run_command(cmd, target)
+        result["output"] = await manager.execute(cmd, target)
     except Exception as e:
         result["error"] = str(e)
     
@@ -89,7 +89,7 @@ async def remove_package(manager, packages: list[str], target: str = "primary") 
         return result
     
     try:
-        result["output"] = await manager.run_command(cmd, target)
+        result["output"] = await manager.execute(cmd, target)
     except Exception as e:
         result["error"] = str(e)
     
@@ -130,7 +130,7 @@ async def search_package(manager, query: str, target: str = "primary") -> dict[s
         return result
     
     try:
-        result["results"] = await manager.run_command(cmd, target)
+        result["results"] = await manager.execute(cmd, target)
     except Exception as e:
         result["error"] = str(e)
     
@@ -170,7 +170,7 @@ async def list_installed(manager, grep: str | None = None, target: str = "primar
         return result
     
     try:
-        result["packages"] = await manager.run_command(cmd, target)
+        result["packages"] = await manager.execute(cmd, target)
     except Exception as e:
         result["error"] = str(e)
     
@@ -195,7 +195,7 @@ async def check_package(manager, package: str, target: str = "primary") -> dict[
     try:
         if os_info["pkg_manager"] == "apt":
             cmd = f"dpkg -s {package} 2>/dev/null | grep -E '^(Status|Version):'"
-            output = await manager.run_command(cmd, target)
+            output = await manager.execute(cmd, target)
             if "install ok installed" in output.lower():
                 result["installed"] = True
                 for line in output.split("\n"):
@@ -204,14 +204,14 @@ async def check_package(manager, package: str, target: str = "primary") -> dict[
                         
         elif os_info["pkg_manager"] == "apk":
             cmd = f"apk info -v {package} 2>/dev/null"
-            output = await manager.run_command(cmd, target)
+            output = await manager.execute(cmd, target)
             if output.strip():
                 result["installed"] = True
                 result["version"] = output.strip().replace(package + "-", "")
                 
         elif os_info["pkg_manager"] in ("dnf", "yum"):
             cmd = f"rpm -q {package} 2>/dev/null"
-            output = await manager.run_command(cmd, target)
+            output = await manager.execute(cmd, target)
             if "not installed" not in output.lower() and output.strip():
                 result["installed"] = True
                 result["version"] = output.strip().replace(package + "-", "")

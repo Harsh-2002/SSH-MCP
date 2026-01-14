@@ -36,7 +36,7 @@ async def test_connection(manager, host: str, port: int, timeout: int = 2,
     
     # Method 1: nc (netcat) - most common
     nc_cmd = f"nc -zv -w {timeout} {host} {port} 2>&1"
-    nc_out = await manager.run_command(nc_cmd, target)
+    nc_out = await manager.execute(nc_cmd, target)
     if "succeeded" in nc_out.lower() or "connected" in nc_out.lower() or "open" in nc_out.lower():
         result["reachable"] = True
         result["method"] = "nc"
@@ -44,7 +44,7 @@ async def test_connection(manager, host: str, port: int, timeout: int = 2,
     
     # Method 2: bash /dev/tcp (works on most bash shells)
     bash_cmd = f"timeout {timeout} bash -c 'echo > /dev/tcp/{host}/{port}' 2>&1 && echo 'OK' || echo 'FAIL'"
-    bash_out = await manager.run_command(bash_cmd, target)
+    bash_out = await manager.execute(bash_cmd, target)
     if "OK" in bash_out:
         result["reachable"] = True
         result["method"] = "bash"
@@ -63,7 +63,7 @@ except Exception as e:
 finally:
     s.close()
 " 2>&1"""
-    py_out = await manager.run_command(py_cmd, target)
+    py_out = await manager.execute(py_cmd, target)
     if "OK" in py_out:
         result["reachable"] = True
         result["method"] = "python"
@@ -96,7 +96,7 @@ async def check_port_owner(manager, port: int, target: str = "primary") -> dict[
     
     # Try ss first (modern)
     ss_cmd = f"ss -tlnp 'sport = :{port}' 2>/dev/null | grep -v 'State'"
-    ss_out = await manager.run_command(ss_cmd, target)
+    ss_out = await manager.execute(ss_cmd, target)
     if ss_out.strip():
         result["listening"] = True
         result["process"] = ss_out.strip()
@@ -110,7 +110,7 @@ async def check_port_owner(manager, port: int, target: str = "primary") -> dict[
     
     # Try netstat
     netstat_cmd = f"netstat -tlnp 2>/dev/null | grep ':{port} '"
-    netstat_out = await manager.run_command(netstat_cmd, target)
+    netstat_out = await manager.execute(netstat_cmd, target)
     if netstat_out.strip():
         result["listening"] = True
         result["process"] = netstat_out.strip()
@@ -118,7 +118,7 @@ async def check_port_owner(manager, port: int, target: str = "primary") -> dict[
     
     # Try lsof
     lsof_cmd = f"lsof -i :{port} -P -n 2>/dev/null | head -5"
-    lsof_out = await manager.run_command(lsof_cmd, target)
+    lsof_out = await manager.execute(lsof_cmd, target)
     if lsof_out.strip() and "COMMAND" in lsof_out:
         result["listening"] = True
         result["process"] = lsof_out.strip()

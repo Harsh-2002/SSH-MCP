@@ -28,7 +28,7 @@ async def check_ssl_cert(manager, host: str, port: int = 443,
     
     # Try openssl s_client
     cmd = f"""echo | openssl s_client -servername {host} -connect {host}:{port} 2>/dev/null | openssl x509 -noout -dates -subject -issuer 2>/dev/null"""
-    output = await manager.run_command(cmd, target)
+    output = await manager.execute(cmd, target)
     
     if "notAfter" not in output:
         result["error"] = "Could not retrieve certificate (openssl may not be installed or host unreachable)"
@@ -48,7 +48,7 @@ async def check_ssl_cert(manager, host: str, port: int = 443,
     # Calculate days left
     if result["expires"]:
         days_cmd = f"""echo $(( ( $(date -d "{result['expires']}" +%s) - $(date +%s) ) / 86400 )) 2>/dev/null || echo '-1'"""
-        days_out = await manager.run_command(days_cmd, target)
+        days_out = await manager.execute(days_cmd, target)
         try:
             result["days_left"] = int(days_out.strip())
         except:
@@ -72,7 +72,7 @@ async def check_dns(manager, hostname: str, target: str = "primary") -> dict[str
     
     # Try dig first, then nslookup, then getent
     cmd = f"""dig +short {hostname} 2>/dev/null || nslookup {hostname} 2>/dev/null | grep 'Address:' | tail -n +2 | awk '{{print $2}}' || getent hosts {hostname} 2>/dev/null | awk '{{print $1}}'"""
-    output = await manager.run_command(cmd, target)
+    output = await manager.execute(cmd, target)
     
     ips = [line.strip() for line in output.strip().split("\n") if line.strip() and not line.startswith(";")]
     
@@ -100,7 +100,7 @@ async def check_ulimits(manager, target: str = "primary") -> dict[str, Any]:
     
     # Get limits
     limits_cmd = "ulimit -a 2>/dev/null"
-    limits_out = await manager.run_command(limits_cmd, target)
+    limits_out = await manager.execute(limits_cmd, target)
     
     for line in limits_out.strip().split("\n"):
         if "open files" in line.lower():
@@ -118,7 +118,7 @@ async def check_ulimits(manager, target: str = "primary") -> dict[str, Any]:
     
     # Get current open files count
     fd_cmd = "cat /proc/sys/fs/file-nr 2>/dev/null"
-    fd_out = await manager.run_command(fd_cmd, target)
+    fd_out = await manager.execute(fd_cmd, target)
     if fd_out.strip():
         parts = fd_out.strip().split()
         if len(parts) >= 3:
@@ -130,7 +130,7 @@ async def check_ulimits(manager, target: str = "primary") -> dict[str, Any]:
     
     # Get current process count
     proc_cmd = "ps aux | wc -l"
-    proc_out = await manager.run_command(proc_cmd, target)
+    proc_out = await manager.execute(proc_cmd, target)
     try:
         result["current_usage"]["processes"] = int(proc_out.strip()) - 1  # minus header
     except:
@@ -153,7 +153,7 @@ async def check_network_errors(manager, target: str = "primary") -> dict[str, An
     
     # Parse /proc/net/dev for statistics
     cmd = "cat /proc/net/dev 2>/dev/null"
-    output = await manager.run_command(cmd, target)
+    output = await manager.execute(cmd, target)
     
     lines = output.strip().split("\n")
     for line in lines[2:]:  # Skip headers

@@ -35,11 +35,11 @@ async def list_scheduled_tasks(manager, target: str = "primary") -> dict[str, An
     # Systemd timers (if available)
     if init_system == "systemd":
         timers_cmd = "systemctl list-timers --all --no-pager 2>/dev/null"
-        result["systemd_timers"] = await manager.run_command(timers_cmd, target)
+        result["systemd_timers"] = await manager.execute(timers_cmd, target)
     
     # User crontab
     crontab_user_cmd = "crontab -l 2>/dev/null || echo 'No crontab for current user'"
-    result["crontab_user"] = await manager.run_command(crontab_user_cmd, target)
+    result["crontab_user"] = await manager.execute(crontab_user_cmd, target)
     
     # System crontabs
     crontab_sys_cmd = """
@@ -49,7 +49,7 @@ echo '=== /etc/cron.d/ ===' && ls -la /etc/cron.d/ 2>/dev/null || echo 'Not foun
 echo ''
 echo '=== Daily jobs ===' && ls /etc/cron.daily/ 2>/dev/null || echo 'Not found'
 """
-    result["crontab_system"] = await manager.run_command(crontab_sys_cmd, target)
+    result["crontab_system"] = await manager.execute(crontab_sys_cmd, target)
     
     return result
 
@@ -68,7 +68,7 @@ async def hunt_zombies(manager, target: str = "primary") -> dict[str, Any]:
     
     # Find zombie processes (state = Z)
     zombie_cmd = "ps aux | awk '$8 ~ /Z/ {print $2, $3, $11}'"
-    output = await manager.run_command(zombie_cmd, target)
+    output = await manager.execute(zombie_cmd, target)
     
     for line in output.strip().split("\n"):
         if line.strip():
@@ -86,7 +86,7 @@ async def hunt_zombies(manager, target: str = "primary") -> dict[str, Any]:
     if result["zombies"]:
         pids = ",".join([z["pid"] for z in result["zombies"]])
         parent_cmd = f"ps -o pid,ppid,comm -p {pids} 2>/dev/null"
-        parent_out = await manager.run_command(parent_cmd, target)
+        parent_out = await manager.execute(parent_cmd, target)
         result["parent_info"] = parent_out
     
     return result
@@ -108,19 +108,19 @@ async def hunt_io_hogs(manager, limit: int = 10, target: str = "primary") -> dic
     
     # Find processes in D state (uninterruptible sleep - usually waiting on I/O)
     d_state_cmd = "ps aux | awk '$8 ~ /D/ {print}' | head -20"
-    result["d_state_procs"] = await manager.run_command(d_state_cmd, target)
+    result["d_state_procs"] = await manager.execute(d_state_cmd, target)
     
     # Check if iotop is available
-    iotop_check = await manager.run_command("command -v iotop >/dev/null 2>&1 && echo 'yes'", target)
+    iotop_check = await manager.execute("command -v iotop >/dev/null 2>&1 && echo 'yes'", target)
     if "yes" in iotop_check:
         result["iotop_available"] = True
         # Run iotop in batch mode for one iteration
         iotop_cmd = f"iotop -b -n 1 -P 2>/dev/null | head -{limit + 2}"
-        result["iotop_output"] = await manager.run_command(iotop_cmd, target)
+        result["iotop_output"] = await manager.execute(iotop_cmd, target)
     
     # Fallback: top processes by memory (often correlates with I/O)
     mem_cmd = f"ps aux --sort=-%mem 2>/dev/null | head -{limit + 1}"
-    result["top_by_memory"] = await manager.run_command(mem_cmd, target)
+    result["top_by_memory"] = await manager.execute(mem_cmd, target)
     
     return result
 
@@ -142,23 +142,23 @@ async def check_system_health(manager, target: str = "primary") -> dict[str, Any
     
     # Uptime and load
     uptime_cmd = "uptime"
-    result["uptime"] = (await manager.run_command(uptime_cmd, target)).strip()
+    result["uptime"] = (await manager.execute(uptime_cmd, target)).strip()
     
     # Load average
     load_cmd = "cat /proc/loadavg 2>/dev/null"
-    result["load_avg"] = (await manager.run_command(load_cmd, target)).strip()
+    result["load_avg"] = (await manager.execute(load_cmd, target)).strip()
     
     # Memory summary
     mem_cmd = "free -h 2>/dev/null | head -2"
-    result["memory"] = (await manager.run_command(mem_cmd, target)).strip()
+    result["memory"] = (await manager.execute(mem_cmd, target)).strip()
     
     # Root disk
     disk_cmd = "df -h / 2>/dev/null | tail -1"
-    result["disk_root"] = (await manager.run_command(disk_cmd, target)).strip()
+    result["disk_root"] = (await manager.execute(disk_cmd, target)).strip()
     
     # Kernel version
     kernel_cmd = "uname -r"
-    result["kernel"] = (await manager.run_command(kernel_cmd, target)).strip()
+    result["kernel"] = (await manager.execute(kernel_cmd, target)).strip()
     
     return result
 
@@ -171,14 +171,14 @@ async def check_oom_events(manager, lines: int = 20, target: str = "primary") ->
     """
     # Try dmesg first
     dmesg_cmd = f"dmesg 2>/dev/null | grep -i 'oom\\|killed process\\|out of memory' | tail -{lines}"
-    output = await manager.run_command(dmesg_cmd, target)
+    output = await manager.execute(dmesg_cmd, target)
     
     if output.strip():
         return output
     
     # Fallback to journalctl
     journal_cmd = f"journalctl -k --no-pager 2>/dev/null | grep -i 'oom\\|killed process' | tail -{lines}"
-    output = await manager.run_command(journal_cmd, target)
+    output = await manager.execute(journal_cmd, target)
     
     if output.strip():
         return output

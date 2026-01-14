@@ -58,7 +58,7 @@ async def lifespan(server: Any):
 
 
 # Initialize FastMCP WITHOUT lifespan - lifespan is managed by server_all.py Starlette app
-# Passing lifespan to FastMCP causes it to stop/start SessionStore on each SSE connection
+# Passing lifespan to FastMCP would cause premature SessionStore cleanup
 mcp = FastMCP("ssh-mcp")
 
 
@@ -663,14 +663,5 @@ async def check_network_errors(ctx: Context, target: str = "primary") -> dict[st
     return await outage_prevention.check_network_errors(manager, target)
 
 # --- App Entry Point ---
-
-app = mcp.sse_app()
-
-def main():
-    port = int(os.environ.get("PORT", 8000))
-    host = os.environ.get("HOST", "0.0.0.0")
-    print(f"Starting SSH MCP Server on http://{host}:{port}")
-    mcp.run(transport="sse")
-
-if __name__ == "__main__":
-    main()
+# This module is imported by server_all.py which handles the actual HTTP transport
+# For standalone usage, use: uvicorn ssh_mcp.server_all:app --host 0.0.0.0 --port 8000

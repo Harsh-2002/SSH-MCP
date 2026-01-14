@@ -11,7 +11,7 @@ async def detect_os(manager, target: str) -> dict:
         {"os": "debian"|"alpine"|"rhel"|"unknown", "pkg_manager": "apt"|"apk"|"dnf"|"yum"|None}
     """
     # Check /etc/os-release
-    result = await manager.run_command("cat /etc/os-release 2>/dev/null || echo ''", target)
+    result = await manager.execute("cat /etc/os-release 2>/dev/null || echo ''", target)
     text = result.lower()
     
     if "alpine" in text:
@@ -20,7 +20,7 @@ async def detect_os(manager, target: str) -> dict:
         return {"os": "debian", "pkg_manager": "apt"}
     elif "fedora" in text or "rhel" in text or "centos" in text or "rocky" in text or "almalinux" in text:
         # Check if dnf or yum
-        dnf_check = await manager.run_command("command -v dnf >/dev/null 2>&1 && echo 'dnf' || echo ''", target)
+        dnf_check = await manager.execute("command -v dnf >/dev/null 2>&1 && echo 'dnf' || echo ''", target)
         pkg = "dnf" if "dnf" in dnf_check else "yum"
         return {"os": "rhel", "pkg_manager": pkg}
     else:
@@ -30,7 +30,7 @@ async def detect_os(manager, target: str) -> dict:
 async def detect_init_system(manager, target: str) -> str:
     """Detect init system: systemd, openrc, or unknown."""
     # Check for systemd
-    systemd_check = await manager.run_command(
+    systemd_check = await manager.execute(
         "command -v systemctl >/dev/null 2>&1 && systemctl --version >/dev/null 2>&1 && echo 'systemd'",
         target
     )
@@ -38,7 +38,7 @@ async def detect_init_system(manager, target: str) -> str:
         return "systemd"
     
     # Check for OpenRC (Alpine)
-    openrc_check = await manager.run_command(
+    openrc_check = await manager.execute(
         "command -v rc-status >/dev/null 2>&1 && echo 'openrc'",
         target
     )
@@ -50,7 +50,7 @@ async def detect_init_system(manager, target: str) -> str:
 
 async def is_docker_container(manager, name: str, target: str) -> bool:
     """Check if a name corresponds to a running Docker container."""
-    result = await manager.run_command(
+    result = await manager.execute(
         f"docker ps --filter 'name=^{name}$' --format '{{{{.Names}}}}' 2>/dev/null || echo ''",
         target
     )
@@ -59,7 +59,7 @@ async def is_docker_container(manager, name: str, target: str) -> bool:
 
 async def docker_available(manager, target: str) -> bool:
     """Check if docker CLI is available on target."""
-    result = await manager.run_command(
+    result = await manager.execute(
         "command -v docker >/dev/null 2>&1 && echo 'yes' || echo 'no'",
         target
     )

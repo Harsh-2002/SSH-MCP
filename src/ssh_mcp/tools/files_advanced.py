@@ -31,7 +31,7 @@ async def find_large_files(manager, path: str = "/", limit: int = 10,
     size_filter = f"-size +{min_size}" if min_size else ""
     cmd = f"find {path} -type f {size_filter} -exec du -h {{}} + 2>/dev/null | sort -rh | head -n {limit}"
     
-    output = await manager.run_command(cmd, target)
+    output = await manager.execute(cmd, target)
     
     for line in output.strip().split("\n"):
         if line.strip():
@@ -68,7 +68,7 @@ async def find_large_folders(manager, path: str = "/", limit: int = 10,
     }
     
     cmd = f"du -h -d {max_depth} {path} 2>/dev/null | sort -rh | head -n {limit}"
-    output = await manager.run_command(cmd, target)
+    output = await manager.execute(cmd, target)
     
     for line in output.strip().split("\n"):
         if line.strip():
@@ -97,7 +97,7 @@ async def disk_usage_summary(manager, target: str = "primary") -> dict[str, Any]
     }
     
     cmd = "df -h 2>/dev/null | grep -v 'tmpfs\\|overlay' | tail -n +2"
-    output = await manager.run_command(cmd, target)
+    output = await manager.execute(cmd, target)
     
     for line in output.strip().split("\n"):
         if line.strip():
@@ -137,7 +137,7 @@ async def find_old_files(manager, path: str, days: int = 30, limit: int = 20,
     }
     
     cmd = f"find {path} -type f -mtime +{days} -exec ls -lh {{}} \\; 2>/dev/null | head -{limit}"
-    output = await manager.run_command(cmd, target)
+    output = await manager.execute(cmd, target)
     
     for line in output.strip().split("\n"):
         if line.strip():
@@ -174,7 +174,7 @@ async def find_recently_modified(manager, path: str, minutes: int = 60, limit: i
     }
     
     cmd = f"find {path} -type f -mmin -{minutes} 2>/dev/null | head -{limit}"
-    output = await manager.run_command(cmd, target)
+    output = await manager.execute(cmd, target)
     
     for line in output.strip().split("\n"):
         if line.strip():

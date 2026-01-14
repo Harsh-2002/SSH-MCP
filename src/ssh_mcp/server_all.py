@@ -1,30 +1,34 @@
-"""Combined HTTP server.
+"""Streamable HTTP MCP server.
 
-Exposes both MCP HTTP transports from a single ASGI app:
-- Streamable HTTP at /mcp
-- SSE at /sse (with /messages)
-
-This is convenient for custom agent runtimes where some clients only implement
-one of the two HTTP transports.
+Exposes MCP via Streamable HTTP transport at /mcp.
+Streamable HTTP is the current MCP standard (SSE was deprecated as of MCP 2024-11-05).
 """
+
+from contextlib import asynccontextmanager
 
 from starlette.applications import Starlette
 
-from .server_sse import mcp, lifespan
+from .mcp_server import mcp, lifespan as session_store_lifespan
 
 
-_streamable_app = mcp.streamable_http_app()  # includes /mcp
-_sse_app = mcp.sse_app()  # includes /sse and /messages mount
+_streamable_app = mcp.streamable_http_app()
 
-# Merge routes into one Starlette app
-app = Starlette(routes=[*_streamable_app.routes, *_sse_app.routes], lifespan=lifespan)
+
+@asynccontextmanager
+async def combined_lifespan(app):
+    """Initialize SessionStore and Streamable HTTP session manager."""
+    async with session_store_lifespan(app):
+        async with _streamable_app.router.lifespan_context(app):
+            yield
+
+
+app = Starlette(routes=_streamable_app.routes, lifespan=combined_lifespan)
 
 
 def main() -> None:
-    # Uses the SDK runner (not required when running via uvicorn)
-    # This will start with Streamable HTTP transport.
     mcp.run(transport="streamable-http")
 
 
 if __name__ == "__main__":
     main()
+

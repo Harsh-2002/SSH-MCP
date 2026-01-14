@@ -41,7 +41,7 @@ async def db_schema(manager, container_name: str, db_type: str,
             db_flag = f"-d {database}" if database else ""
             # List tables
             tables_cmd = f"docker exec {container_name} psql -U postgres {db_flag} -c '\\dt' 2>&1"
-            result["tables"] = await manager.run_command(tables_cmd, target)
+            result["tables"] = await manager.execute(tables_cmd, target)
             
         elif db_type == "mysql":
             if not database:
@@ -49,7 +49,7 @@ async def db_schema(manager, container_name: str, db_type: str,
                 return result
             # List tables
             tables_cmd = f"docker exec {container_name} mysql -u root {database} -e 'SHOW TABLES;' 2>&1"
-            result["tables"] = await manager.run_command(tables_cmd, target)
+            result["tables"] = await manager.execute(tables_cmd, target)
             
         elif db_type in ("scylladb", "cassandra"):
             # List keyspaces and tables
@@ -58,7 +58,7 @@ async def db_schema(manager, container_name: str, db_type: str,
                 tables_cmd = f"docker exec {container_name} cqlsh -e 'DESCRIBE TABLES;' {keyspace} 2>&1"
             else:
                 tables_cmd = f"docker exec {container_name} cqlsh -e 'DESCRIBE KEYSPACES;' 2>&1"
-            result["tables"] = await manager.run_command(tables_cmd, target)
+            result["tables"] = await manager.execute(tables_cmd, target)
             
         else:
             result["error"] = f"Unsupported db_type: {db_type}. Use postgres, mysql, or scylladb."
@@ -100,14 +100,14 @@ async def db_describe_table(manager, container_name: str, db_type: str,
         if db_type == "postgres":
             db_flag = f"-d {database}" if database else ""
             cmd = f"docker exec {container_name} psql -U postgres {db_flag} -c '\\d {table}' 2>&1"
-            result["schema"] = await manager.run_command(cmd, target)
+            result["schema"] = await manager.execute(cmd, target)
             
         elif db_type == "mysql":
             if not database:
                 result["error"] = "Database name is required for MySQL"
                 return result
             cmd = f"docker exec {container_name} mysql -u root {database} -e 'DESCRIBE {table};' 2>&1"
-            result["schema"] = await manager.run_command(cmd, target)
+            result["schema"] = await manager.execute(cmd, target)
             
         elif db_type in ("scylladb", "cassandra"):
             keyspace = database or ""
@@ -115,7 +115,7 @@ async def db_describe_table(manager, container_name: str, db_type: str,
                 cmd = f"docker exec {container_name} cqlsh -e 'DESCRIBE TABLE {keyspace}.{table};' 2>&1"
             else:
                 cmd = f"docker exec {container_name} cqlsh -e 'DESCRIBE TABLE {table};' 2>&1"
-            result["schema"] = await manager.run_command(cmd, target)
+            result["schema"] = await manager.execute(cmd, target)
             
         else:
             result["error"] = f"Unsupported db_type: {db_type}"
@@ -159,16 +159,16 @@ async def db_query(manager, container_name: str, db_type: str, query: str,
         if db_type == "postgres":
             db_flag = f"-d {database}" if database else ""
             cmd = f"docker exec {container_name} psql -U postgres {db_flag} -c '{safe_query}' 2>&1"
-            result["result"] = await manager.run_command(cmd, target)
+            result["result"] = await manager.execute(cmd, target)
             
         elif db_type == "mysql":
             db_flag = database if database else ""
             cmd = f"docker exec {container_name} mysql -u root {db_flag} -e '{safe_query}' 2>&1"
-            result["result"] = await manager.run_command(cmd, target)
+            result["result"] = await manager.execute(cmd, target)
             
         elif db_type in ("scylladb", "cassandra"):
             cmd = f"docker exec {container_name} cqlsh -e '{safe_query}' 2>&1"
-            result["result"] = await manager.run_command(cmd, target)
+            result["result"] = await manager.execute(cmd, target)
             
         else:
             result["error"] = f"Unsupported db_type: {db_type}"
@@ -193,7 +193,7 @@ async def list_db_containers(manager, target: str = "primary") -> dict[str, Any]
     
     # Get all containers with their images
     cmd = "docker ps --format '{{.Names}}|{{.Image}}' 2>/dev/null"
-    output = await manager.run_command(cmd, target)
+    output = await manager.execute(cmd, target)
     
     db_keywords = {
         "postgres": "postgres",

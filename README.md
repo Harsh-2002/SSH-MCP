@@ -1,6 +1,6 @@
 # SSH MCP Server
 
-A Model Context Protocol (MCP) server that lets an agent connect to remote machines over SSH and perform common DevOps tasks. It supports local execution (stdio) and remote deployment over HTTP (Streamable HTTP and SSE).
+A Model Context Protocol (MCP) server that lets an agent connect to remote machines over SSH and perform common DevOps tasks. It supports local execution (stdio) and remote deployment over HTTP using Streamable HTTP transport.
 
 ## Quickstart
 
@@ -15,9 +15,8 @@ docker volume create ssh-data
 docker run -p 8000:8000 -v ssh-data:/data --name ssh-mcp ssh-mcp
 ```
 
-HTTP endpoints:
+HTTP endpoint:
 - Streamable HTTP: `http://localhost:8000/mcp`
-- SSE: `http://localhost:8000/sse`
 
 ### Local
 
@@ -27,14 +26,8 @@ pip install .
 # Stdio mode (for local MCP hosts)
 python -m ssh_mcp
 
-# Combined HTTP server (recommended if you want both /mcp and /sse)
+# HTTP server (Streamable HTTP transport)
 uvicorn ssh_mcp.server_all:app --host 0.0.0.0 --port 8000
-
-# Streamable HTTP only
-uvicorn ssh_mcp.server_http:app --host 0.0.0.0 --port 8000
-
-# SSE only
-uvicorn ssh_mcp.server_sse:app --host 0.0.0.0 --port 8000
 ```
 
 ## Tool Reference
@@ -240,16 +233,10 @@ This server solves this with three strategies:
 *   **Config**: Set `SSH_MCP_GLOBAL_STATE=true`.
 *   **Best For**: Single-user private instances where you don't want to configure headers.
 
-### Data flow (Streamable HTTP)
+### Data flow
 
 - Clients connect to the Streamable HTTP endpoint: `/mcp`
-- Tool calls and results are carried over the MCP Streamable HTTP transport
-
-### Data flow (SSE)
-
-- The MCP host opens an SSE session: `GET /sse`
-- Tool calls are sent as JSON-RPC: `POST /messages?session_id=...`
-- Tool results stream back over SSE
+- Tool calls and results are carried over the MCP Streamable HTTP transport (the current MCP standard)
 
 ### State model
 
@@ -265,13 +252,13 @@ This server solves this with three strategies:
 ```text
 src/ssh_mcp/
 ├── server.py             # stdio server (FastMCP)
-├── server_sse.py         # SSE server (FastMCP)
-├── server_http.py        # Streamable HTTP server (FastMCP)
-├── server_all.py         # Combined HTTP server (/mcp + /sse)
+├── mcp_server.py         # FastMCP server instance and tool definitions
+├── server_all.py         # HTTP server (Streamable HTTP /mcp)
 ├── ssh_manager.py        # multi-connection SSH engine + sync + jump host
 ├── session_store.py      # connection pooling for stateless agents
 └── tools/
     ├── base.py           # OS/init system detection helpers
+    ├── bulk.py           # fleet-wide bulk operations
     ├── files.py          # read/write/edit/list
     ├── files_advanced.py # large file finder, disk analysis
     ├── system.py         # run/info
@@ -280,6 +267,7 @@ src/ssh_mcp/
     ├── network.py        # net_stat/net_dump/curl
     ├── net_debug.py      # connectivity testing
     ├── diagnostics.py    # scheduled tasks, zombies, OOM
+    ├── outage_prevention.py  # SSL cert, DNS, ulimits, network errors
     ├── services_universal.py  # Systemd/OpenRC/Docker services
     ├── db.py             # database queries (postgres/mysql/scylla)
     └── pkg.py            # package manager (apt/apk/dnf)
