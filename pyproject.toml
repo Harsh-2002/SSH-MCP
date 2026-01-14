@@ -16,6 +16,7 @@ dependencies = [
 ssh-mcp = "ssh_mcp.__main__:main"
 ssh-mcp-sse = "ssh_mcp.server_sse:main"
 ssh-mcp-http = "ssh_mcp.server_http:main"
+ssh-mcp-all = "ssh_mcp.server_all:main"
 
 [build-system]
 requires = ["hatchling"]

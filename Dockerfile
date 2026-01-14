@@ -28,5 +28,5 @@ USER appuser
 # Expose the port
 EXPOSE $PORT
 
-# Run the Streamable HTTP server (serves /mcp)
-CMD ["uvicorn", "ssh_mcp.server_http:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run combined HTTP server (/mcp and /sse)
+CMD ["uvicorn", "ssh_mcp.server_all:app", "--host", "0.0.0.0", "--port", "8000"]

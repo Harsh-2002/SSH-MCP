@@ -15,7 +15,7 @@ logging.basicConfig(
 logger = logging.getLogger("ssh-mcp-server")
 
 # Initialize FastMCP
-mcp = FastMCP("ssh-mcp-saas")
+mcp = FastMCP("ssh-mcp")
 
 # --- Session Management ---
 
@@ -241,7 +241,7 @@ app = mcp.sse_app()
 def main():
     port = int(os.environ.get("PORT", 8000))
     host = os.environ.get("HOST", "0.0.0.0")
-    print(f"Starting SSH MCP SaaS Server on http://{host}:{port}")
+    print(f"Starting SSH MCP Server on http://{host}:{port}")
     mcp.run(transport="sse")
 
 if __name__ == "__main__":

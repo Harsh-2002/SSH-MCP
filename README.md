@@ -15,9 +15,9 @@ docker volume create ssh-data
 docker run -p 8000:8000 -v ssh-data:/data --name ssh-mcp ssh-mcp
 ```
 
-Streamable HTTP endpoint: `http://localhost:8000/mcp`
-
-SSE endpoint (optional): `http://localhost:8000/sse`
+HTTP endpoints:
+- Streamable HTTP: `http://localhost:8000/mcp`
+- SSE: `http://localhost:8000/sse`
 
 ### Local
 
@@ -27,10 +27,13 @@ pip install .
 # Stdio mode (for local MCP hosts)
 python -m ssh_mcp
 
-# Streamable HTTP mode (recommended)
+# Combined HTTP server (recommended if you want both /mcp and /sse)
+uvicorn ssh_mcp.server_all:app --host 0.0.0.0 --port 8000
+
+# Streamable HTTP only
 uvicorn ssh_mcp.server_http:app --host 0.0.0.0 --port 8000
 
-# SSE mode (optional)
+# SSE only
 uvicorn ssh_mcp.server_sse:app --host 0.0.0.0 --port 8000
 ```
 
@@ -148,7 +151,7 @@ You can also provide `password` or `private_key_path` per connection.
 
 | Variable | Description | Default |
 | :--- | :--- | :--- |
-| `PORT` | The port the SSE server listens on. | `8000` |
+| `PORT` | The port the HTTP server listens on. | `8000` |
 | `ALLOWED_ROOT` | Restricts file operations to a specific path. | `/` (unrestricted) |
 
 ## Architecture
@@ -173,8 +176,10 @@ You can also provide `password` or `private_key_path` per connection.
 
 ```text
 src/ssh_mcp/
-├── server_sse.py       # SSE server (FastMCP)
 ├── server.py           # stdio server (FastMCP)
+├── server_sse.py       # SSE server (FastMCP)
+├── server_http.py      # Streamable HTTP server (FastMCP)
+├── server_all.py       # Combined HTTP server (/mcp + /sse)
 ├── ssh_manager.py      # multi-connection SSH engine + sync + jump host
 └── tools/
     ├── files.py        # read/write/edit/list wrappers
@@ -188,3 +193,7 @@ src/ssh_mcp/
 
 - The network and monitoring tools depend on standard Linux utilities. Some features (like `tcpdump`) may require installing packages on the target and configuring sudo.
 - Docker tools require Docker to be installed on the target host.
+
+## License
+
+MIT
