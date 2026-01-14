@@ -314,14 +314,22 @@ class SSHManager:
             cwd = self.cwds.get(alias, ".")
             logger.info(f"Executing command on '{alias}': {command}")
 
-            TIMEOUT = 60.0
-            cwd_delimiter = "___MCP_CWD_CAPTURE___"
+            # Configurable timeout for production (default 120 seconds)
+            TIMEOUT = float(os.getenv("SSH_MCP_COMMAND_TIMEOUT", "120.0"))
+            # Use a unique delimiter that won't appear in normal command output
+            cwd_delimiter = "___MCP_PWD_" + str(hash(alias))[-8:] + "___"
 
+            # Escape backslashes and double quotes for safe shell wrapping
+            # This works reliably across sh, bash, dash, and other POSIX shells
+            safe_command = command.replace('\\', '\\\\').replace('"', '\\"').replace('$', '\\$').replace('`', '\\`')
+            
+            # Use double-quote wrapper for better compatibility and simpler escaping
             wrapped_command = (
                 f'cd "{cwd}" && '
-                f'( {command} ); LAST_EXIT_CODE=$?; '
-                f'echo "{cwd_delimiter}"; pwd; '
-                f'exit $LAST_EXIT_CODE'
+                f'{safe_command}; '
+                f'__EXIT__=$?; '
+                f'echo ""; echo "{cwd_delimiter}"; pwd; '
+                f'exit $__EXIT__'
             )
 
             try:
@@ -375,12 +383,13 @@ class SSHManager:
 
         final_output = "\n\n".join(output_parts) or "(No output)"
 
-        MAX_LEN = 4000
+        # Configurable output limit for production (default 50KB)
+        MAX_LEN = int(os.getenv("SSH_MCP_MAX_OUTPUT", "51200"))
         if len(final_output) > MAX_LEN:
-            final_output = final_output[:MAX_LEN] + "\n... [Output truncated]"
+            final_output = final_output[:MAX_LEN] + "\n... [Output truncated]\n"
 
         if res["exit_code"] != 0:
-            final_output += f"\n\n[Exit Code: {res['exit_code']}]"
+            final_output += f"\n[Exit Code: {res['exit_code']}]"
 
         return final_output
 

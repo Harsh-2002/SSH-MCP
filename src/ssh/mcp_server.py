@@ -115,6 +115,7 @@ async def connect(
         result = await manager.connect(host, username, port, private_key_path, password, alias, via)
         return result
     except Exception as e:
+        logger.error(f"Connection failed to {host}:{port} as {username}: {e}")
         return f"Error connecting: {str(e)}"
 
 @mcp.tool()
@@ -145,6 +146,7 @@ async def sync(ctx: Context, source_node: str, source_path: str, dest_node: str,
     try:
         return await manager.sync(source_node, source_path, dest_node, dest_path)
     except Exception as e:
+        logger.error(f"Sync failed {source_node}:{source_path} -> {dest_node}:{dest_path}: {e}")
         return f"Error syncing: {str(e)}"
 
 # --- File Tools ---
@@ -154,28 +156,44 @@ async def read(ctx: Context, path: str, target: str = "primary") -> str:
     """Read a remote file."""
     manager = await get_session_manager(ctx)
     if not manager: return "Error: Not connected."
-    return await files.read_file(manager, path, target)
+    try:
+        return await files.read_file(manager, path, target)
+    except Exception as e:
+        logger.error(f"Read failed {target}:{path}: {e}")
+        return f"Error reading file: {str(e)}"
 
 @mcp.tool()
 async def write(ctx: Context, path: str, content: str, target: str = "primary") -> str:
     """Write content to a remote file (overwrite)."""
     manager = await get_session_manager(ctx)
     if not manager: return "Error: Not connected."
-    return await files.write_file(manager, path, content, target)
+    try:
+        return await files.write_file(manager, path, content, target)
+    except Exception as e:
+        logger.error(f"Write failed {target}:{path}: {e}")
+        return f"Error writing file: {str(e)}"
 
 @mcp.tool()
 async def edit(ctx: Context, path: str, old_text: str, new_text: str, target: str = "primary") -> str:
     """Smart replace text in a file. Errors if match is not unique."""
     manager = await get_session_manager(ctx)
     if not manager: return "Error: Not connected."
-    return await files.edit_file(manager, path, old_text, new_text, target)
+    try:
+        return await files.edit_file(manager, path, old_text, new_text, target)
+    except Exception as e:
+        logger.error(f"Edit failed {target}:{path}: {e}")
+        return f"Error editing file: {str(e)}"
 
 @mcp.tool()
 async def list_dir(ctx: Context, path: str, target: str = "primary") -> str:
     """List files in a directory (JSON format)."""
     manager = await get_session_manager(ctx)
     if not manager: return "Error: Not connected."
-    return await files.list_directory(manager, path, target)
+    try:
+        return await files.list_directory(manager, path, target)
+    except Exception as e:
+        logger.error(f"List directory failed {target}:{path}: {e}")
+        return f"Error listing directory: {str(e)}"
 
 # --- System Tools ---
 
@@ -184,14 +202,22 @@ async def run(ctx: Context, command: str, target: str = "primary") -> str:
     """Execute a shell command."""
     manager = await get_session_manager(ctx)
     if not manager: return "Error: Not connected."
-    return await system.run_command(manager, command, target)
+    try:
+        return await system.run_command(manager, command, target)
+    except Exception as e:
+        logger.error(f"Command execution failed on {target}: {e}")
+        return f"Error executing command: {str(e)}"
 
 @mcp.tool()
 async def info(ctx: Context, target: str = "primary") -> str:
     """Get OS/Kernel details."""
     manager = await get_session_manager(ctx)
     if not manager: return "Error: Not connected."
-    return await system.get_system_info(manager, target)
+    try:
+        return await system.get_system_info(manager, target)
+    except Exception as e:
+        logger.error(f"System info failed on {target}: {e}")
+        return f"Error getting system info: {str(e)}"
 
 # --- Monitoring Tools ---
 
@@ -281,8 +307,12 @@ async def list_services(ctx: Context, failed_only: bool = False, target: str = "
     - Enable/Disable: run("systemctl enable|disable <service>")
     """
     manager = await get_session_manager(ctx)
-    if not manager: return {"error": "Not connected"}
-    return await services_universal.list_services(manager, failed_only, target)
+    if not manager: return {"error": "Not connected", "target": target}
+    try:
+        return await services_universal.list_services(manager, failed_only, target)
+    except Exception as e:
+        logger.error(f"List services failed on {target}: {e}")
+        return {"error": str(e), "target": target}
 
 # --- Database Tools ---
 
@@ -312,8 +342,12 @@ async def db_query(
         target: SSH connection alias
     """
     manager = await get_session_manager(ctx)
-    if not manager: return {"error": "Not connected"}
-    return await db.db_query(manager, container_name, db_type, query, database, username, password, target)
+    if not manager: return {"error": "Not connected", "target": target}
+    try:
+        return await db.db_query(manager, container_name, db_type, query, database, username, password, target)
+    except Exception as e:
+        logger.error(f"DB query failed on {target}/{container_name}: {e}")
+        return {"error": str(e), "target": target, "container": container_name}
 
 
 # --- App Entry Point ---
