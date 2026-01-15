@@ -45,7 +45,7 @@ All tools are exposed via MCP. Each tool accepts a `target` parameter (default: 
 ### Remote Execution
 | Tool | Description |
 |------|-------------|
-| `run(command)` | Execute shell command |
+| `run(command)` | Execute any shell command |
 | `info()` | Get OS/kernel/shell info |
 
 ### File Operations
@@ -56,104 +56,34 @@ All tools are exposed via MCP. Each tool accepts a `target` parameter (default: 
 | `edit(path, old_text, new_text)` | Safe text replacement |
 | `list_dir(path)` | List directory contents (JSON) |
 
-### Service Management
+### Discovery
 | Tool | Description |
 |------|-------------|
-| `inspect_service(name)` | Auto-detect Docker/Systemd/OpenRC status |
-| `list_services(failed_only)` | List running or failed services |
-| `fetch_logs(service_name, lines, error_only)` | Smart log aggregation |
-| `service_action(name, action)` | Start/stop/restart services or containers |
-
-### Docker
-| Tool | Description |
-|------|-------------|
-| `docker_ps(all)` | List containers |
-| `docker_logs(container_id, lines)` | Get container logs |
-| `docker_op(container_id, action)` | Start/stop/restart container |
-| `docker_ip(container_name)` | Get container IP address(es) |
-| `docker_find_by_ip(ip_address)` | Find container by IP |
-| `docker_networks()` | List networks and their containers |
-| `docker_cp_from_container(container, container_path, host_path)` | Copy file from container to host (e.g., backups) |
-| `docker_cp_to_container(host_path, container, container_path)` | Copy file from host to container (e.g., configs) |
-
-### Database (Container-Aware)
-| Tool | Description |
-|------|-------------|
-| `list_db_containers()` | Find database containers |
-| `db_schema(container, db_type, database)` | Get table list (postgres/mysql/scylladb) |
-| `db_describe_table(container, db_type, table)` | Get table structure |
-| `db_query(container, db_type, query)` | Execute SQL/CQL query |
-
-### Package Manager
-| Tool | Description |
-|------|-------------|
-| `install_package(packages)` | Install packages (apt/apk/dnf auto-detected) |
-| `remove_package(packages)` | Remove packages |
-| `search_package(query)` | Search available packages |
-| `list_installed(grep)` | List installed packages |
-
-### Network & Connectivity
-| Tool | Description |
-|------|-------------|
+| `docker_ps(all)` | List Docker containers |
 | `net_stat(port)` | List listening ports |
-| `net_dump(interface, count, filter)` | Capture network traffic (tcpdump) |
-| `curl(url, method)` | Check URL connectivity |
-| `test_connection(host, port, timeout)` | Verify TCP connectivity between services |
-| `check_port_owner(port)` | Find process listening on port |
-| `scan_ports(host, ports)` | Quick multi-port scan |
+| `list_services(failed_only)` | List system services (Systemd/OpenRC) |
 
-### System Diagnostics
+### Monitoring
 | Tool | Description |
 |------|-------------|
 | `usage()` | System resource usage (CPU/RAM/Disk) |
 | `logs(path, lines, grep)` | Tail log files |
 | `ps(sort_by, limit)` | Top processes |
-| `list_scheduled_tasks()` | Unified cron + systemd timers view |
-| `hunt_zombies()` | Find defunct processes |
-| `hunt_io_hogs(limit)` | Find processes in I/O wait |
-| `check_system_health()` | Quick health overview |
-| `check_oom_events(lines)` | Recent OOM kills from kernel |
 
-### Disk Analysis
+### Database
 | Tool | Description |
 |------|-------------|
-| `find_large_files(path, limit, min_size)` | Find largest files recursively |
-| `find_large_folders(path, limit, max_depth)` | Find largest folders |
-| `disk_usage_summary()` | All mounted filesystem usage |
-| `find_old_files(path, days, limit)` | Find stale files |
-| `find_recently_modified(path, minutes, limit)` | Track recent changes |
+| `db_query(container, db_type, query, ...)` | Execute SQL/CQL/MongoDB query in container |
+| `db_schema(container, db_type, database, ...)` | Get database schema (tables/collections) |
+| `db_describe_table(container, db_type, table, ...)` | Describe table/collection structure |
+| `list_db_containers()` | Find database containers |
 
-### Outage Prevention
-| Tool | Description |
-|------|-------------|
-| `check_ssl_cert(host, port)` | Check SSL cert expiry (days until expiration) |
-| `check_dns(hostname)` | Verify DNS resolution from target |
-| `check_ulimits()` | Check resource limits (open files, max processes) |
-| `check_network_errors()` | Check network interfaces for drops/errors |
+**Supported databases:** PostgreSQL, MySQL, ScyllaDB, Cassandra, MongoDB
 
-### Fleet Bulk Operations
-Run operations across multiple connected hosts simultaneously. All bulk tools accept a `targets` parameter (list of connection aliases).
-
-| Tool | Description |
-|------|-------------|
-| `bulk_run(command, targets)` | Run same command on multiple hosts |
-| `bulk_read(path, targets)` | Read file from multiple hosts (compare configs) |
-| `bulk_write(path, content, targets)` | Deploy file to multiple hosts |
-| `bulk_edit(path, old, new, targets)` | Mass config update (e.g., Nginx) |
-| `bulk_docker_ps(all, targets)` | Cluster-wide container inventory |
-| `bulk_usage(targets)` | Resource usage from all hosts |
-| `bulk_service(name, action, targets)` | Restart service on all hosts |
-| `bulk_install(packages, targets)` | Install packages fleet-wide |
-| `bulk_connectivity(host, port, targets)` | Verify all hosts can reach a service |
-| `bulk_health(targets)` | System health from all hosts |
-| `bulk_zombies(targets)` | Find zombies fleet-wide |
-| `bulk_disk(targets)` | Disk usage from all hosts |
-| `bulk_remove_package(packages, targets)` | Uninstall packages fleet-wide |
-| `bulk_db_query(container, db_type, query, targets)` | Run SQL/CQL across replicas |
-| `bulk_oom_check(lines, targets)` | OOM events from all hosts |
-| `bulk_find_large_files(path, limit, targets)` | Find disk hogs fleet-wide |
-| `bulk_ssl_check(host, port, targets)` | SSL cert expiry from all hosts |
-| `bulk_dns_check(hostname, targets)` | DNS resolution from all hosts |
+**db_query options:**
+- `timeout` (default: 60s) - Query timeout
+- `read_only` (default: false) - Block destructive queries
+- `max_rows` (default: 1000) - Limit result rows
 
 ## Multi-node usage
 
@@ -260,24 +190,18 @@ src/ssh/
 ├── session_store.py      # connection pooling for stateless agents
 └── tools/
     ├── base.py           # OS/init system detection helpers
-    ├── bulk.py           # fleet-wide bulk operations
     ├── files.py          # read/write/edit/list
-    ├── files_advanced.py # large file finder, disk analysis
     ├── system.py         # run/info
     ├── monitoring.py     # usage/logs/ps
-    ├── docker.py         # containers, IPs, networks
-    ├── network.py        # net_stat/net_dump/curl
-    ├── net_debug.py      # connectivity testing
-    ├── diagnostics.py    # scheduled tasks, zombies, OOM
-    ├── outage_prevention.py  # SSL cert, DNS, ulimits, network errors
-    ├── services_universal.py  # Systemd/OpenRC/Docker services
-    ├── db.py             # database queries (postgres/mysql/scylla)
-    └── pkg.py            # package manager (apt/apk/dnf)
+    ├── docker.py         # docker_ps
+    ├── network.py        # net_stat
+    ├── services_universal.py  # list_services
+    └── db.py             # db_query with secure credentials
 ```
 
 ## Notes
 
-- The network and monitoring tools depend on standard Linux utilities. Some features (like `tcpdump`) may require installing packages on the target and configuring sudo.
+- Some commands (like `tcpdump`) may require installing packages on the target and configuring sudo.
 - Docker tools require Docker to be installed on the target host.
 
 ## License
