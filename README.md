@@ -1,6 +1,6 @@
 # SSH MCP Server
 
-A Model Context Protocol (MCP) server that lets an agent connect to remote machines over SSH and perform common DevOps tasks. It supports local execution (stdio) and remote deployment over HTTP using Streamable HTTP transport.
+A Model Context Protocol (MCP) server that lets an agent connect to remote machines over SSH to manage systems. It supports local execution (stdio) and remote deployment over HTTP using Streamable HTTP transport.
 
 ## Quickstart
 
@@ -56,14 +56,14 @@ All tools are exposed via MCP. Each tool accepts a `target` parameter (default: 
 | `edit(path, old_text, new_text)` | Safe text replacement |
 | `list_dir(path)` | List directory contents (JSON) |
 
-### Discovery
+### System status
 | Tool | Description |
 |------|-------------|
 | `docker_ps(all)` | List Docker containers |
 | `net_stat(port)` | List listening ports |
 | `list_services(failed_only)` | List system services (Systemd/OpenRC) |
 
-### Monitoring
+### Resources & Logs
 | Tool | Description |
 |------|-------------|
 | `usage()` | System resource usage (CPU/RAM/Disk) |
@@ -102,7 +102,7 @@ Example:
 3) Copy a file across nodes (even if they can’t reach each other):
 - `sync(source_node="web1", source_path="/var/log/nginx/access.log", dest_node="web2", dest_path="/tmp/web1-access.log")`
 
-## Jump hosts (bastion)
+## Jump hosts
 
 If a node is not reachable directly from where the MCP server runs, you can connect through a jump host.
 
@@ -174,35 +174,6 @@ This server solves this with three strategies:
 
 - The server uses the selected strategy (Standard, Header, or Global) to determine which `SSHManager` to use.
 - Each `SSHManager` holds multiple SSH connections keyed by `alias`.
-
-### Stateless agents
-
-*Removed legacy section - see "Session Persistence Strategies" above.*
-
-### Code layout
-
-```text
-src/ssh/
-├── server.py             # stdio server (FastMCP)
-├── mcp_server.py         # FastMCP server instance and tool definitions
-├── server_all.py         # HTTP server (Streamable HTTP /mcp)
-├── ssh_manager.py        # multi-connection SSH engine + sync + jump host
-├── session_store.py      # connection pooling for stateless agents
-└── tools/
-    ├── base.py           # OS/init system detection helpers
-    ├── files.py          # read/write/edit/list
-    ├── system.py         # run/info
-    ├── monitoring.py     # usage/logs/ps
-    ├── docker.py         # docker_ps
-    ├── network.py        # net_stat
-    ├── services_universal.py  # list_services
-    └── db.py             # db_query with secure credentials
-```
-
-## Notes
-
-- Some commands (like `tcpdump`) may require installing packages on the target and configuring sudo.
-- Docker tools require Docker to be installed on the target host.
 
 ## License
 
