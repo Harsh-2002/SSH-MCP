@@ -1,0 +1,29 @@
+services:
+  ssh-mcp:
+    image: firstfinger/ssh-mcp:latest
+    container_name: ssh-mcp
+    ports:
+      - "8000:8000"
+    volumes:
+      - ssh-data:/data
+    environment:
+      # Required
+      - PORT=8000
+      
+      # Session Management
+      - SSH_MCP_SESSION_HEADER=X-Session-Key
+      # - SSH_MCP_SESSION_TIMEOUT=300  # Session timeout in seconds (default: 300)
+      # - SSH_MCP_GLOBAL_STATE=false  # Use global state instead of per-session (default: false)
+      
+      # Command Execution
+      # - SSH_MCP_COMMAND_TIMEOUT=120.0  # Command timeout in seconds (default: 120)
+      # - SSH_MCP_MAX_OUTPUT=51200  # Max output size in bytes (default: 51200)
+      
+      # Security & Debugging
+      # - SSH_MCP_DEBUG_ASYNCSSH=false  # Enable verbose asyncssh logging (default: false)
+      
+    restart: unless-stopped
+
+volumes:
+  ssh-data:
+    driver: local
