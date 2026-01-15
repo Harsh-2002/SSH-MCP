@@ -325,26 +325,34 @@ async def db_query(
     database: str | None = None, 
     username: str | None = None,
     password: str | None = None,
-    target: str = "primary"
+    target: str = "primary",
+    timeout: int = 60,
+    read_only: bool = False,
+    max_rows: int | None = 1000,
 ) -> dict[str, Any]:
-    """Execute a SQL/CQL query inside a database container.
+    """Execute a SQL/CQL/MongoDB query inside a database container.
     
-    This tool handles credentials securely via environment variables (not command line).
-    Supports: postgres, mysql, scylladb.
+    Supports: postgres, mysql, scylladb, cassandra, mongodb.
     
     Args:
         container_name: Docker container name
-        db_type: "postgres", "mysql", or "scylladb"
-        query: SQL/CQL query to execute
-        database: Database name (optional for scylladb)
-        username: Database username (optional, uses defaults if not provided)
-        password: Database password (optional, uses defaults if not provided)
+        db_type: "postgres", "mysql", "scylladb", "cassandra", or "mongodb"
+        query: SQL/CQL/MongoDB query to execute
+        database: Database/keyspace name
+        username: Database username
+        password: Database password
         target: SSH connection alias
+        timeout: Query timeout in seconds (default: 60)
+        read_only: If True, reject destructive queries (INSERT, UPDATE, DELETE, etc.)
+        max_rows: Limit result rows (default: 1000, None for unlimited)
+        
+    Returns:
+        Result with query output, execution metadata, and any errors.
     """
     manager = await get_session_manager(ctx)
     if not manager: return {"error": "Not connected", "target": target}
     try:
-        return await db.db_query(manager, container_name, db_type, query, database, username, password, target)
+        return await db.db_query(manager, container_name, db_type, query, database, username, password, target, timeout, read_only, max_rows)
     except Exception as e:
         logger.error(f"DB query failed on {target}/{container_name}: {e}")
         return {"error": str(e), "target": target, "container": container_name}

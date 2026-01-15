@@ -73,50 +73,17 @@ All tools are exposed via MCP. Each tool accepts a `target` parameter (default: 
 ### Database
 | Tool | Description |
 |------|-------------|
-| `db_query(container, db_type, query, database, username, password)` | Execute SQL/CQL query in container (postgres/mysql/scylladb) |
+| `db_query(container, db_type, query, ...)` | Execute SQL/CQL/MongoDB query in container |
+| `db_schema(container, db_type, database, ...)` | Get database schema (tables/collections) |
+| `db_describe_table(container, db_type, table, ...)` | Describe table/collection structure |
+| `list_db_containers()` | Find database containers |
 
-## Common Operations
+**Supported databases:** PostgreSQL, MySQL, ScyllaDB, Cassandra, MongoDB
 
-Use the `run()` tool for common DevOps tasks:
-
-**Docker operations:**
-- Logs: `run("docker logs <container>")`
-- Start/Stop: `run("docker start|stop|restart <container>")`
-- Inspect: `run("docker inspect <container>")`
-- Exec: `run("docker exec <container> <command>")`
-- Networks: `run("docker network ls")`
-- Copy files: `run("docker cp <src> <dst>")`
-
-**Service operations:**
-- Status: `run("systemctl status <service>")`
-- Start/Stop: `run("systemctl start|stop|restart <service>")`
-- Logs: `run("journalctl -u <service> -n 100")`
-- Enable/Disable: `run("systemctl enable|disable <service>")`
-
-**Package management:**
-- Install: `run("apt install <pkg>")` or `run("apk add <pkg>")`
-- Remove: `run("apt remove <pkg>")`
-- Search: `run("apt search <query>")`
-- List: `run("dpkg -l | grep <name>")`
-
-**Network diagnostics:**
-- Connectivity: `run("nc -zv <host> <port>")` or `run("ping <host>")`
-- DNS: `run("dig <domain>")` or `run("nslookup <domain>")`
-- Traffic: `run("tcpdump -i any -c 20")`
-- HTTP: `run("curl -I <url>")`
-
-**File analysis:**
-- Large files: `run("find / -type f -size +100M -exec ls -lh {} \; | head -20")`
-- Disk usage: `run("du -sh /* | sort -h | tail -10")`
-- Old files: `run("find /var/log -type f -mtime +30")`
-- Recently modified: `run("find /etc -type f -mmin -60")`
-
-**System diagnostics:**
-- Zombies: `run("ps aux | grep '[Z]'")`
-- I/O hogs: `run("ps aux | grep ' D '")`
-- OOM events: `run("journalctl -k | grep -i 'killed process'")`
-- SSL cert: `run("echo | openssl s_client -connect <host>:443 2>/dev/null | openssl x509 -noout -dates")`
-- Ulimits: `run("ulimit -a")`
+**db_query options:**
+- `timeout` (default: 60s) - Query timeout
+- `read_only` (default: false) - Block destructive queries
+- `max_rows` (default: 1000) - Limit result rows
 
 ## Multi-node usage
 
