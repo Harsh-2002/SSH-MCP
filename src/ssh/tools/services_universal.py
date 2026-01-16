@@ -40,16 +40,16 @@ async def inspect_service(manager, name: str, target: str = "primary") -> dict[s
             
             # Get container status
             status_cmd = f"docker inspect --format '{{{{.State.Status}}}}' {name} 2>/dev/null"
-            status = (await manager.execute(status_cmd, target)).strip()
+            status = (await manager.run(status_cmd, target)).strip()
             result["status"] = status if status else "unknown"
             
             # Get details
             details_cmd = f"docker inspect --format 'Image: {{{{.Config.Image}}}}\\nCreated: {{{{.Created}}}}\\nRestarts: {{{{.RestartCount}}}}' {name} 2>/dev/null"
-            result["details"] = await manager.execute(details_cmd, target)
+            result["details"] = await manager.run(details_cmd, target)
             
             # Get logs
             logs_cmd = f"docker logs --tail 20 {name} 2>&1"
-            result["logs"] = await manager.execute(logs_cmd, target)
+            result["logs"] = await manager.run(logs_cmd, target)
             
             return result
     
@@ -61,23 +61,23 @@ async def inspect_service(manager, name: str, target: str = "primary") -> dict[s
         
         # Get status
         status_cmd = f"systemctl is-active {name} 2>/dev/null || echo 'unknown'"
-        status = (await manager.execute(status_cmd, target)).strip()
+        status = (await manager.run(status_cmd, target)).strip()
         result["status"] = status
         
         # Get details
         details_cmd = f"systemctl status {name} --no-pager -l 2>&1 | head -20"
-        result["details"] = await manager.execute(details_cmd, target)
+        result["details"] = await manager.run(details_cmd, target)
         
         # Get logs
         logs_cmd = f"journalctl -u {name} -n 20 --no-pager 2>/dev/null || echo 'No journal logs'"
-        result["logs"] = await manager.execute(logs_cmd, target)
+        result["logs"] = await manager.run(logs_cmd, target)
         
     elif init_system == "openrc":
         result["type"] = "openrc"
         
         # Get status
         status_cmd = f"rc-service {name} status 2>&1"
-        status_output = await manager.execute(status_cmd, target)
+        status_output = await manager.run(status_cmd, target)
         if "started" in status_output.lower():
             result["status"] = "running"
         elif "stopped" in status_output.lower():
@@ -89,7 +89,7 @@ async def inspect_service(manager, name: str, target: str = "primary") -> dict[s
         
         # OpenRC typically logs to /var/log/messages or service-specific files
         logs_cmd = f"tail -20 /var/log/{name}.log 2>/dev/null || tail -20 /var/log/messages 2>/dev/null | grep -i {name} || echo 'No logs found'"
-        result["logs"] = await manager.execute(logs_cmd, target)
+        result["logs"] = await manager.run(logs_cmd, target)
     
     return result
 
@@ -108,7 +108,7 @@ async def list_services(manager, failed_only: bool = False, target: str = "prima
             cmd = "systemctl list-units --type=service --state=failed --no-pager --no-legend"
         else:
             cmd = "systemctl list-units --type=service --state=running --no-pager --no-legend"
-        output = await manager.execute(cmd, target)
+        output = await manager.run(cmd, target)
         for line in output.strip().split("\n"):
             if line.strip():
                 parts = line.split()
@@ -120,7 +120,7 @@ async def list_services(manager, failed_only: bool = False, target: str = "prima
     
     elif init_system == "openrc":
         cmd = "rc-status --all 2>/dev/null"
-        output = await manager.execute(cmd, target)
+        output = await manager.run(cmd, target)
         result["services"] = [{"raw": output}]  # OpenRC output is less structured
     
     return result
@@ -144,7 +144,7 @@ async def fetch_logs(manager, service_name: str, lines: int = 100,
     if await docker_available(manager, target):
         if await is_docker_container(manager, service_name, target):
             cmd = f"docker logs --tail {lines} {service_name} 2>&1"
-            logs = await manager.execute(cmd, target)
+            logs = await manager.run(cmd, target)
             if error_only and logs:
                 # Filter for common error patterns
                 lines_list = logs.split("\n")
@@ -157,7 +157,7 @@ async def fetch_logs(manager, service_name: str, lines: int = 100,
     if init_system == "systemd":
         grep_flag = "--grep='error|fail|warn'" if error_only else ""
         cmd = f"journalctl -u {service_name} -n {lines} --no-pager {grep_flag} 2>/dev/null"
-        logs = await manager.execute(cmd, target)
+        logs = await manager.run(cmd, target)
         if logs.strip():
             return logs
     
@@ -168,13 +168,13 @@ async def fetch_logs(manager, service_name: str, lines: int = 100,
         f"/var/log/{service_name}/error.log",
     ]
     for path in paths_to_try:
-        check = await manager.execute(f"test -f {path} && echo 'exists'", target)
+        check = await manager.run(f"test -f {path} && echo 'exists'", target)
         if "exists" in check:
             if error_only:
                 cmd = f"grep -iE 'error|fail|warn' {path} | tail -{lines}"
             else:
                 cmd = f"tail -{lines} {path}"
-            logs = await manager.execute(cmd, target)
+            logs = await manager.run(cmd, target)
             if logs.strip():
                 return logs
     
@@ -195,15 +195,15 @@ async def service_action(manager, name: str, action: str, target: str = "primary
             if action == "reload":
                 return "Docker containers do not support reload. Use restart."
             cmd = f"docker {action} {name} 2>&1"
-            return await manager.execute(cmd, target)
+            return await manager.run(cmd, target)
     
     # Systemd
     init_system = await detect_init_system(manager, target)
     if init_system == "systemd":
         cmd = f"systemctl {action} {name} 2>&1"
-        return await manager.execute(cmd, target)
+        return await manager.run(cmd, target)
     elif init_system == "openrc":
         cmd = f"rc-service {name} {action} 2>&1"
-        return await manager.execute(cmd, target)
+        return await manager.run(cmd, target)
     
     return f"Cannot perform action: unknown init system on {target}"

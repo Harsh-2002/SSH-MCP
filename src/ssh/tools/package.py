@@ -52,18 +52,18 @@ async def package_manage(
         if action == "check":
             # Check if package is installed
             cmd = _build_check_cmd(pkg_manager, package)
-            output = await manager.execute(cmd, target)
+            output = await manager.run(cmd, target)
             result["success"] = "installed" in output.lower() or package in output
             result["output"] = output.strip()
         elif action == "install":
             cmd = _build_install_cmd(pkg_manager, package)
-            output = await manager.execute(cmd, target)
+            output = await manager.run(cmd, target)
             result["output"] = output.strip()
             # Check for success indicators
             result["success"] = "error" not in output.lower() and "failed" not in output.lower()
         elif action == "remove":
             cmd = _build_remove_cmd(pkg_manager, package)
-            output = await manager.execute(cmd, target)
+            output = await manager.run(cmd, target)
             result["output"] = output.strip()
             result["success"] = "error" not in output.lower() and "failed" not in output.lower()
     except Exception as e:

@@ -51,7 +51,7 @@ async def diagnose_system(
     
     try:
         # 1. Load Average
-        load_output = await manager.execute("cat /proc/loadavg 2>/dev/null", target)
+        load_output = await manager.run("cat /proc/loadavg 2>/dev/null", target)
         parts = load_output.strip().split()
         if len(parts) >= 3:
             load_1 = float(parts[0])
@@ -60,14 +60,14 @@ async def diagnose_system(
             result["load"] = {"1min": load_1, "5min": load_5, "15min": load_15}
             
             # Check CPU count for context
-            cpu_count_output = await manager.execute("nproc 2>/dev/null || echo '1'", target)
+            cpu_count_output = await manager.run("nproc 2>/dev/null || echo '1'", target)
             cpu_count = int(cpu_count_output.strip()) if cpu_count_output.strip().isdigit() else 1
             
             if load_1 > cpu_count * 2:
                 issues.append(f"HIGH LOAD: {load_1:.2f} (CPUs: {cpu_count})")
         
         # 2. Top Processes by CPU/Memory
-        ps_output = await manager.execute(
+        ps_output = await manager.run(
             "ps -eo pid,user,%cpu,%mem,comm --sort=-%cpu 2>/dev/null | head -n 6",
             target
         )
@@ -83,7 +83,7 @@ async def diagnose_system(
                 })
         
         # 3. OOM Killer Events
-        oom_output = await manager.execute(
+        oom_output = await manager.run(
             "dmesg 2>/dev/null | grep -i 'out of memory' | tail -n 5 || echo ''",
             target
         )
@@ -93,7 +93,7 @@ async def diagnose_system(
             issues.append(f"OOM EVENTS: {len(oom_lines)} found in dmesg")
         
         # 4. Disk Pressure
-        df_output = await manager.execute(
+        df_output = await manager.run(
             "df -P 2>/dev/null | awk 'NR>1 {print $5, $6}' | grep -E '^[89][0-9]%|^100%'",
             target
         )
@@ -110,7 +110,7 @@ async def diagnose_system(
         # 5. Failed Services
         init_system = await detect_init_system(manager, target)
         if init_system == "systemd":
-            svc_output = await manager.execute(
+            svc_output = await manager.run(
                 "systemctl --failed --no-legend --no-pager 2>/dev/null | head -n 10",
                 target
             )
@@ -121,7 +121,7 @@ async def diagnose_system(
                         result["failed_services"].append(parts[0])
                         issues.append(f"FAILED SERVICE: {parts[0]}")
         elif init_system == "openrc":
-            svc_output = await manager.execute(
+            svc_output = await manager.run(
                 "rc-status --crashed 2>/dev/null | head -n 10",
                 target
             )

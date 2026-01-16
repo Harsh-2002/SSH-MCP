@@ -36,7 +36,7 @@ def _split_host_port(value: str) -> tuple[str, int | None]:
 async def check_tool_availability(manager: SSHManager, tool: str, target: str | None = None) -> bool:
     """Checks if a command-line tool is available on the remote system."""
     check_cmd = f"command -v {tool} >/dev/null 2>&1 && echo 'present' || echo 'missing'"
-    output = await manager.execute(check_cmd, target=target)
+    output = await manager.run(check_cmd, target=target)
     return "present" in output
 
 
@@ -125,7 +125,7 @@ async def net_dump(manager: SSHManager, interface: str = "any", count: int = 20,
     
     cmd = f"timeout 10s sudo tcpdump -i {interface} -c {count} -n {filter}"
     
-    output = await manager.execute(cmd, target=target)
+    output = await manager.run(cmd, target=target)
     
     # Handle sudo issues gracefully
     if "sudo: a terminal is required" in output or "sudo: no tty" in output:
@@ -142,4 +142,4 @@ async def curl(manager: SSHManager, url: str, method: str = "GET", target: str |
     # But usually 'curl' implies full check. We'll use -v for debug info.
     # -m 5: 5 second timeout
     cmd = f"curl -X {method} -m 5 -v {url}"
-    return await manager.execute(cmd, target=target)
+    return await manager.run(cmd, target=target)

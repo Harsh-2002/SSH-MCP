@@ -45,7 +45,7 @@ async def search_files(
     cmd = " ".join(cmd_parts)
     
     try:
-        output = await manager.execute(cmd, target)
+        output = await manager.run(cmd, target)
         files = [f.strip() for f in output.strip().split("\n") if f.strip()]
         result["files"] = files
         result["count"] = len(files)
@@ -99,7 +99,7 @@ async def search_text(
     cmd = " ".join(cmd_parts)
     
     try:
-        output = await manager.execute(cmd, target)
+        output = await manager.run(cmd, target)
         matches = []
         for line in output.strip().split("\n"):
             if not line.strip():

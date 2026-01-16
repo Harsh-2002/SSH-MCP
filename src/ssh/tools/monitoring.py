@@ -88,7 +88,7 @@ async def logs(manager: SSHManager, path: str, lines: int = 50, grep: str | None
         # Simple grep filtering
         cmd += f" | grep '{grep}'"
         
-    return await manager.execute(cmd, target=target)
+    return await manager.run(cmd, target=target)
 
 async def ps(manager: SSHManager, sort_by: str = "cpu", limit: int = 10, target: str | None = None) -> str:
     """
@@ -105,4 +105,4 @@ async def ps(manager: SSHManager, sort_by: str = "cpu", limit: int = 10, target:
     # --sort: sorting order
     cmd = f"ps -eo pid,user,%cpu,%mem,comm --sort={sort_flag} | head -n {limit + 1}"
     
-    return await manager.execute(cmd, target=target)
+    return await manager.run(cmd, target=target)

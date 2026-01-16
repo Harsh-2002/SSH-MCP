@@ -191,7 +191,7 @@ async def db_query(
         # Execute with timing
         start_time = time.time()
         logger.info(f"Executing DB query on {container_name} ({db_type_lower})")
-        output = await manager.execute(cmd, target)
+        output = await manager.run(cmd, target)
         elapsed_ms = int((time.time() - start_time) * 1000)
         
         result["metadata"]["execution_time_ms"] = elapsed_ms
@@ -284,7 +284,7 @@ async def db_schema(
             return result
             
         logger.info(f"Getting schema from {container_name} ({db_type_lower})")
-        result["tables"] = await manager.execute(cmd, target)
+        result["tables"] = await manager.run(cmd, target)
         
     except Exception as e:
         logger.error(f"Schema fetch failed: {e}")
@@ -363,7 +363,7 @@ async def db_describe_table(
             return result
             
         logger.info(f"Describing table {table} from {container_name} ({db_type_lower})")
-        result["schema"] = await manager.execute(cmd, target)
+        result["schema"] = await manager.run(cmd, target)
         
     except Exception as e:
         logger.error(f"Describe table failed: {e}")
@@ -387,7 +387,7 @@ async def list_db_containers(manager, target: str = "primary") -> dict[str, Any]
         return result
     
     cmd = "docker ps --format '{{.Names}}|{{.Image}}' 2>/dev/null"
-    output = await manager.execute(cmd, target)
+    output = await manager.run(cmd, target)
     
     db_keywords = {
         "postgres": "postgres",

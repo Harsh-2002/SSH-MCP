@@ -9,7 +9,7 @@ from typing import Any
 async def check_tool_availability(manager: SSHManager, tool: str, target: str | None = None) -> bool:
     """Checks if a command-line tool is available on the remote system."""
     check_cmd = f"command -v {tool} >/dev/null 2>&1 && echo 'present' || echo 'missing'"
-    output = await manager.execute(check_cmd, target=target)
+    output = await manager.run(check_cmd, target=target)
     return "present" in output
 
 
@@ -39,7 +39,7 @@ async def docker_logs(manager: SSHManager, container_id: str, lines: int = 50, t
         return "Error: Docker command not found."
         
     cmd = f"docker logs --tail {lines} {container_id}"
-    return await manager.execute(cmd, target=target)
+    return await manager.run(cmd, target=target)
 
 async def docker_op(manager: SSHManager, container_id: str, action: str, target: str | None = None) -> str:
     """
@@ -54,7 +54,7 @@ async def docker_op(manager: SSHManager, container_id: str, action: str, target:
         return "Error: Docker command not found."
 
     cmd = f"docker {action} {container_id}"
-    return await manager.execute(cmd, target=target)
+    return await manager.run(cmd, target=target)
 
 
 async def docker_ip(manager: SSHManager, container_name: str, target: str | None = None) -> dict[str, Any]:
@@ -75,7 +75,7 @@ async def docker_ip(manager: SSHManager, container_name: str, target: str | None
     
     # Get all network IPs for this container
     cmd = f"docker inspect --format '{{{{range $net, $conf := .NetworkSettings.Networks}}}}{{{{$net}}}}:{{{{$conf.IPAddress}}}}|{{{{end}}}}' {container_name} 2>/dev/null"
-    output = await manager.execute(cmd, target=target)
+    output = await manager.run(cmd, target=target)
     
     if "Error" in output or not output.strip():
         result["error"] = f"Container '{container_name}' not found or not running"
@@ -109,7 +109,7 @@ async def docker_find_by_ip(manager: SSHManager, ip_address: str, target: str | 
     
     # Get all containers with their IPs
     cmd = "docker ps -q | xargs -I {} docker inspect --format '{{.Name}}|{{range $net, $conf := .NetworkSettings.Networks}}{{$net}}:{{$conf.IPAddress}},{{end}}' {} 2>/dev/null"
-    output = await manager.execute(cmd, target=target)
+    output = await manager.run(cmd, target=target)
     
     for line in output.strip().split("\n"):
         if "|" in line:
@@ -141,14 +141,14 @@ async def docker_networks(manager: SSHManager, target: str | None = None) -> dic
     
     # Get networks
     cmd = "docker network ls --format '{{.Name}}|{{.Driver}}'"
-    output = await manager.execute(cmd, target=target)
+    output = await manager.run(cmd, target=target)
     
     for line in output.strip().split("\n"):
         if "|" in line:
             name, driver = line.split("|", 1)
             # Get containers in this network
             inspect_cmd = f"docker network inspect {name} --format '{{{{range .Containers}}}}{{{{.Name}}}},{{{{end}}}}' 2>/dev/null"
-            containers_out = await manager.execute(inspect_cmd, target=target)
+            containers_out = await manager.run(inspect_cmd, target=target)
             containers = [c for c in containers_out.strip().split(",") if c]
             result["networks"].append({
                 "name": name,
@@ -192,11 +192,11 @@ async def docker_cp_from_container(manager: SSHManager, container_name: str,
     host_dir = "/".join(host_path.rsplit("/", 1)[:-1]) if "/" in host_path else "."
     if host_dir and host_dir != ".":
         mkdir_cmd = f"mkdir -p {host_dir}"
-        await manager.execute(mkdir_cmd, target=target)
+        await manager.run(mkdir_cmd, target=target)
     
     # Copy from container to host
     copy_cmd = f"docker cp {container_name}:{container_path} {host_path} 2>&1"
-    output = await manager.execute(copy_cmd, target=target)
+    output = await manager.run(copy_cmd, target=target)
     
     if "Error" in output or "No such" in output:
         result["message"] = f"Copy failed: {output.strip()}"
@@ -239,7 +239,7 @@ async def docker_cp_to_container(manager: SSHManager, host_path: str,
     
     # Copy from host to container
     copy_cmd = f"docker cp {host_path} {container_name}:{container_path} 2>&1"
-    output = await manager.execute(copy_cmd, target=target)
+    output = await manager.run(copy_cmd, target=target)
     
     if "Error" in output or "No such" in output:
         result["message"] = f"Copy failed: {output.strip()}"

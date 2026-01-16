@@ -374,8 +374,13 @@ class SSHManager:
                 "cwd": self.cwds.get(alias, cwd),
             }
 
+    async def run(self, command: str, retry: bool = True, target: Optional[str] = None, timeout: Optional[float] = None) -> str:
+        """Run a command and return raw stdout (machine-readable, for internal tool use)."""
+        res = await self.run_result(command, retry=retry, target=target, timeout=timeout)
+        return res["stdout"]
+
     async def execute(self, command: str, retry: bool = True, target: Optional[str] = None, timeout: Optional[float] = None) -> str:
-        """Run a command and return a human-readable string."""
+        """Run a command and return a human-readable string (for AI-facing tool wrappers)."""
         res = await self.run_result(command, retry=retry, target=target, timeout=timeout)
 
         output_parts: List[str] = []

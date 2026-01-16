@@ -48,7 +48,7 @@ async def journal_read(
             cmd = _build_syslog_cmd(service, lines)
             result["source"] = "syslog"
         
-        output = await manager.execute(cmd, target)
+        output = await manager.run(cmd, target)
         result["logs"] = output.strip()
     except Exception as e:
         logger.error(f"journal_read failed: {e}")
@@ -127,7 +127,7 @@ async def dmesg_read(
             cmd += f" | grep -i '{grep}'"
         cmd += f" | tail -n {lines}"
         
-        output = await manager.execute(cmd, target)
+        output = await manager.run(cmd, target)
         result["logs"] = output.strip()
     except Exception as e:
         logger.error(f"dmesg_read failed: {e}")

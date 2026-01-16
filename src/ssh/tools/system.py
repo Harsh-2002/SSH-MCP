@@ -11,7 +11,7 @@ async def get_system_info(manager: SSHManager, target: str | None = None) -> str
     # We run them as a single command for speed
     full_cmd = " && echo '|||' && ".join(commands)
     
-    output = await manager.execute(full_cmd, target=target)
+    output = await manager.run(full_cmd, target=target)
     
     # Simple parsing logic (robustness depends on the shell)
     # Output format roughly:
@@ -25,5 +25,5 @@ async def get_system_info(manager: SSHManager, target: str | None = None) -> str
 
 async def run_command(manager: SSHManager, command: str, target: str | None = None, timeout: float | None = None) -> str:
     """Run a generic command with optional custom timeout."""
-    return await manager.execute(command, target=target, timeout=timeout)
+    return await manager.run(command, target=target, timeout=timeout)
 
