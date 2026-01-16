@@ -7,7 +7,8 @@ Streamable HTTP is the current MCP standard (SSE was deprecated as of MCP 2024-1
 from contextlib import asynccontextmanager
 
 from starlette.applications import Starlette
-from starlette.routing import Mount
+from starlette.routing import Mount, Route
+from starlette.responses import RedirectResponse
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.server.transport_security import TransportSecuritySettings
 
@@ -33,10 +34,19 @@ async def combined_lifespan(app):
             yield
 
 
+async def redirect_to_mcp_slash(request):
+    """Redirect /mcp to /mcp/ to handle trailing slash issue."""
+    return RedirectResponse(url="/mcp/", status_code=307)
+
+
 app = Starlette(
-    routes=[Mount("/mcp", app=_session_mgr.handle_request)],
+    routes=[
+        Route("/mcp", redirect_to_mcp_slash, methods=["GET", "POST", "DELETE"]),
+        Mount("/mcp", app=_session_mgr.handle_request),
+    ],
     lifespan=combined_lifespan,
 )
+
 
 
 def main() -> None:
