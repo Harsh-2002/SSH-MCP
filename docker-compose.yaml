@@ -23,6 +23,7 @@ services:
       # - SSH_MCP_DEBUG_ASYNCSSH=false       # [Verbose logs for troubleshooting SSH issues]
       
     restart: unless-stopped
+    # If using bind mounts, ensure permissions: sudo chown -R 1000:1000 ./data
 
 volumes:
   ssh-data:

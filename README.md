@@ -13,7 +13,11 @@ docker run -d \
   -p 8000:8000 \
   -v ssh-mcp-data:/data \
   firstfinger/ssh-mcp:latest
+
+# Note: If using a bind mount instead of a named volume, ensure it is writable:
+# sudo chown -R 1000:1000 /path/to/your/data
 ```
+
 
 ### Docker Compose
 
@@ -39,100 +43,89 @@ python -m ssh
 uvicorn ssh.server_all:app --host 0.0.0.0 --port 8000
 ```
 
+
+## How It Works
+
+This server acts as a **bridge** between an AI Agent and your remote infrastructure.
+
+### 1. Direct SSH Bridge & Multi-Node Support
+Instead of the agent needing SSH libraries, it calls simple MCP tools. The server handles all connections, authentication, and even allows you to `sync` files between multiple remote nodes directly through its relay.
+
+### 2. Managed Identity (Passwordless Access)
+By default, the server generates an Ed25519 key pair in `/data`:
+- Private key: `/data/id_ed25519`
+- Public key: `/data/id_ed25519.pub`
+
+**To use it:** 
+1. Call `identity()` to get the public key.
+2. Add it to `~/.ssh/authorized_keys` on your target host(s).
+3. Connect without a password.
+
+### 3. Session Persistence Strategies
+Since many AI agents are "stateless" HTTP clients, the server uses three strategies to keep SSH connections alive and maintain state (like `cd` commands):
+
+*   **Standard Mode**: (Default) SSH state is tied to the persistent MCP connection (Best for Claude Desktop).
+*   **Smart Header Mode**: (Recommended for APIs) Caches sessions based on a client-provided header (e.g., `X-Session-Key: agent-1`). Sessions close after 5 minutes of silence.
+*   **Global Mode**: (`SSH_MCP_GLOBAL_STATE=true`) Shares one global manager for all clients. Best for private, single-user instances.
+
 ## Tool Reference
 
-All tools are exposed via MCP. Each tool accepts a `target` parameter (default: `"primary"`) to specify which SSH connection to use.
+All tools accept a `target` parameter (default: `"primary"`) to specify the SSH connection.
 
-### Core Tools
+### Core & System
 | Tool | Description |
 |------|-------------|
-| `connect(host, username, port, alias, via)` | Open SSH connection to a remote server |
+| `connect(host,...)` | Open SSH connection (supports password, key, or managed identity) |
 | `disconnect(alias)` | Close one or all SSH connections |
-| `identity()` | Get server's public SSH key for authorized_keys |
-| `sync(source_node, source_path, dest_node, dest_path)` | Stream file between two nodes |
-
-### Remote Execution
-| Tool | Description |
-|------|-------------|
+| `identity()` | Get server's public key for `authorized_keys` |
+| `info()` | Get remote OS/kernel/shell information |
 | `run(command)` | Execute any shell command |
-| `info()` | Get OS/kernel/shell info |
 
 ### File Operations
 | Tool | Description |
 |------|-------------|
 | `read(path)` | Read remote file content |
 | `write(path, content)` | Create/overwrite remote file |
-| `edit(path, old_text, new_text)` | Safe text replacement |
-| `list_dir(path)` | List directory contents (JSON) |
+| `edit(path, old, new)` | Safe text replacement in a file |
+| `list_dir(path)` | List directory contents |
+| `sync(src, dst, ...)` | Stream file directly between two remote nodes |
 
-### System status
+### DevOps & Monitoring
 | Tool | Description |
 |------|-------------|
-| `docker_ps(all)` | List Docker containers |
-| `net_stat(port)` | List listening ports |
-| `list_services(failed_only)` | List system services (Systemd/OpenRC) |
-
-### Resources & Logs
-| Tool | Description |
-|------|-------------|
-| `usage()` | System resource usage (CPU/RAM/Disk) |
-| `logs(path, lines, grep)` | Tail log files |
-| `ps(sort_by, limit)` | Top processes |
+| `search_files(pattern)` | Find files using POSIX `find` |
+| `search_text(pattern)` | Search in files using `grep` |
+| `package_manage(pkg)` | Install/check packages (apt, apk, dnf, yum) |
+| `diagnose_system()` | One-click SRE health check (Load, OOM, Disk) |
+| `journal_read()` | Read system logs (systemd/syslog) |
+| `docker_ps()` | List Docker containers |
 
 ### Database
 | Tool | Description |
 |------|-------------|
-| `db_query(container, db_type, query, ...)` | Execute SQL/CQL/MongoDB query in container |
-| `db_schema(container, db_type, database, ...)` | Get database schema (tables/collections) |
-| `db_describe_table(container, db_type, table, ...)` | Describe table/collection structure |
-| `list_db_containers()` | Find database containers |
+| `db_query(...)` | Execute SQL/CQL/MongoDB query in container |
+| `db_schema(...)` | Get database/collection schema |
+| `list_db_containers()` | Find database containers on host |
 
-**Supported databases:** PostgreSQL, MySQL, ScyllaDB, Cassandra, MongoDB
+**Supported DBs:** PostgreSQL, MySQL, ScyllaDB, Cassandra, MongoDB
 
-## Multi-node usage
+## Advanced Usage
 
-You can connect to multiple hosts in a single session by choosing different `alias` values.
+### Multi-node orchestration
+You can connect to multiple hosts in a single session by using different `alias` values.
+```python
+connect(host="10.0.0.1", alias="web")
+connect(host="10.0.0.2", alias="db")
+run("uptime", target="web")
+sync(source_node="web", source_path="/log.txt", dest_node="db", dest_path="/tmp/")
+```
 
-Example:
-
-1) Connect two servers:
-- `connect(host="10.0.0.10", username="ubuntu", alias="web1")`
-- `connect(host="10.0.0.11", username="ubuntu", alias="web2")`
-
-2) Run commands on a specific node:
-- `run("uptime", target="web1")`
-- `run("df -h", target="web2")`
-
-3) Copy a file across nodes (even if they can’t reach each other):
-- `sync(source_node="web1", source_path="/var/log/nginx/access.log", dest_node="web2", dest_path="/tmp/web1-access.log")`
-
-## Jump hosts
-
-If a node is not reachable directly from where the MCP server runs, you can connect through a jump host.
-
-Example:
-
-1) Connect the bastion:
-- `connect(host="bastion.company.com", username="ubuntu", alias="bastion")`
-
-2) Connect a private node through the bastion:
-- `connect(host="10.0.1.25", username="ubuntu", alias="db1", via="bastion")`
-
-From then on, you can use:
-- `run("systemctl status postgresql", target="db1")`
-
-## Authentication
-
-By default the server keeps a managed SSH key pair in `/data` (container volume):
-- Private key: `/data/id_ed25519`
-- Public key: `/data/id_ed25519.pub` (comment: `Origon`)
-
-To use managed identity:
-1. Call `identity()` and copy the public key.
-2. Add it to `~/.ssh/authorized_keys` on the target host(s).
-3. Call `connect(...)` without `password`/`private_key_path`.
-
-You can also provide `password` or `private_key_path` per connection.
+### Jump hosts
+Connect to private nodes through a bastion:
+```python
+connect(host="bastion.net", alias="jump")
+connect(host="10.0.1.5", via="jump", alias="private-srv")
+```
 
 ## Configuration
 
@@ -146,40 +139,6 @@ You can also provide `password` or `private_key_path` per connection.
 | `SSH_MCP_MAX_OUTPUT` | Integer | `51200` | Maximum byte size of command output returned (approx 50KB). |
 | `SSH_MCP_DEBUG_ASYNCSSH` | Boolean | `false` | Enable verbose debug logs for the `asyncssh` library. |
 
-## Architecture
-
-### Session Persistence Strategies
-
-A common challenge with AI Agents is that they are often "stateless" HTTP clients—they open a new connection for every request. By default, this would cause the SSH connection to close and reopen constantly, breaking state (like `cd` commands).
-
-This server solves this with three strategies:
-
-#### 1. Standard Mode (Default)
-*   **Behavior**: SSH state is tied to the MCP connection.
-*   **Best For**: Desktop apps (Claude Desktop) or agents that keep a persistent WebSocket/SSE connection.
-
-#### 2. Smart Header Mode (Recommended for APIs)
-*   **Behavior**: The server caches SSH sessions based on a client-provided header (default: `X-Session-Key`).
-*   **How it works**:
-    1. Agent sends `X-Session-Key: my-agent-1` with every request.
-    2. Server checks its cache. If a session exists for `my-agent-1`, it is reused.
-    3. If the agent goes silent for 5 minutes (configurable), the connection is automatically closed.
-*   **Best For**: Custom AI Agents, LangChain, or REST-based clients.
-
-#### 3. Global Mode (Force Override)
-*   **Behavior**: A single global SSH manager is used for *everyone*.
-*   **Config**: Set `SSH_MCP_GLOBAL_STATE=true`.
-*   **Best For**: Single-user private instances where you don't want to configure headers.
-
-### Data flow
-
-- Clients connect to the Streamable HTTP endpoint: `/mcp`
-- Tool calls and results are carried over the MCP Streamable HTTP transport (the current MCP standard)
-
-### State model
-
-- The server uses the selected strategy (Standard, Header, or Global) to determine which `SSHManager` to use.
-- Each `SSHManager` holds multiple SSH connections keyed by `alias`.
 
 ## License
 
