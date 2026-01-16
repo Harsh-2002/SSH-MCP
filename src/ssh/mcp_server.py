@@ -4,7 +4,8 @@ from mcp.server.fastmcp import FastMCP, Context
 from .ssh_manager import SSHManager
 from .session_store import SessionStore
 from .tools import files, system, monitoring, docker, network
-from .tools import services_universal, db
+from .tools import services_universal, db, search, package, journal, diagnose
+
 import os
 import logging
 from typing import Any
@@ -357,6 +358,144 @@ async def db_query(
         logger.error(f"DB query failed on {target}/{container_name}: {e}")
         return {"error": str(e), "target": target, "container": container_name}
 
+
+# --- Search Tools ---
+
+@mcp.tool()
+async def search_files(
+    ctx: Context,
+    pattern: str,
+    path: str = "/",
+    max_depth: int | None = 5,
+    file_type: str | None = None,
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Search for files by name pattern using find.
+    
+    Args:
+        pattern: Glob pattern (e.g., "*.log", "config*").
+        path: Starting directory.
+        max_depth: Maximum depth (default: 5).
+        file_type: "f" for files, "d" for directories (optional).
+        target: SSH connection alias.
+    """
+    manager = await get_session_manager(ctx)
+    if not manager: return {"error": "Not connected", "target": target}
+    return await search.search_files(manager, pattern, path, max_depth, file_type, target)
+
+
+@mcp.tool()
+async def search_text(
+    ctx: Context,
+    pattern: str,
+    path: str,
+    recursive: bool = True,
+    ignore_case: bool = False,
+    max_results: int = 50,
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Search for text patterns inside files using grep.
+    
+    Args:
+        pattern: Regex pattern to search for.
+        path: File or directory to search in.
+        recursive: Search subdirectories (default: True).
+        ignore_case: Case-insensitive (default: False).
+        max_results: Max matching lines (default: 50).
+        target: SSH connection alias.
+    """
+    manager = await get_session_manager(ctx)
+    if not manager: return {"error": "Not connected", "target": target}
+    return await search.search_text(manager, pattern, path, recursive, ignore_case, max_results, target)
+
+
+# --- Package Management Tools ---
+
+@mcp.tool()
+async def package_manage(
+    ctx: Context,
+    action: str,
+    pkg: str,
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Manage packages: install, remove, or check.
+    
+    Automatically detects the package manager (apt, apk, dnf, yum).
+    
+    Args:
+        action: "install", "remove", or "check".
+        pkg: Package name.
+        target: SSH connection alias.
+    """
+    manager = await get_session_manager(ctx)
+    if not manager: return {"error": "Not connected", "target": target}
+    return await package.package_manage(manager, action, pkg, target)
+
+
+# --- Log & Journal Tools ---
+
+@mcp.tool()
+async def journal_read(
+    ctx: Context,
+    service: str | None = None,
+    since: str | None = None,
+    lines: int = 100,
+    priority: str | None = None,
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Read system logs (journalctl or syslog fallback).
+    
+    Args:
+        service: Filter by service name (e.g., "nginx").
+        since: Time filter (e.g., "1 hour ago").
+        lines: Number of lines (default: 100, max: 500).
+        priority: Systemd priority filter.
+        target: SSH connection alias.
+    """
+    manager = await get_session_manager(ctx)
+    if not manager: return {"error": "Not connected", "target": target}
+    return await journal.journal_read(manager, service, since, lines, priority, target)
+
+
+@mcp.tool()
+async def dmesg_read(
+    ctx: Context,
+    grep: str | None = None,
+    lines: int = 100,
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Read kernel ring buffer (dmesg).
+    
+    Args:
+        grep: Optional pattern to filter messages.
+        lines: Number of lines (default: 100).
+        target: SSH connection alias.
+    """
+    manager = await get_session_manager(ctx)
+    if not manager: return {"error": "Not connected", "target": target}
+    return await journal.dmesg_read(manager, grep, lines, target)
+
+
+# --- Diagnostic Tools ---
+
+@mcp.tool()
+async def diagnose_system(
+    ctx: Context,
+    target: str = "primary",
+) -> dict[str, Any]:
+    """Comprehensive system health check.
+    
+    Checks load, OOM events, disk pressure, and failed services in a single call.
+    
+    Args:
+        target: SSH connection alias.
+        
+    Returns:
+        Summary of issues found or "System appears healthy".
+    """
+    manager = await get_session_manager(ctx)
+    if not manager: return {"error": "Not connected", "target": target}
+    return await diagnose.diagnose_system(manager, target)
 
 
 # --- App Entry Point ---
