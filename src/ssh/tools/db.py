@@ -19,36 +19,56 @@ logger = logging.getLogger("ssh-mcp")
 
 
 def _build_postgres_cmd(container: str, username: str, password: str, database: str | None, query: str, timeout: int) -> str:
-    """Build PostgreSQL command with proper authentication."""
+    """Build PostgreSQL command with proper authentication.
+    
+    Uses single-quoted outer shell to prevent any variable expansion or command substitution.
+    All inner single quotes are escaped using the POSIX '\'' method.
+    """
+    # Escape single quotes in password and query for POSIX shell
+    safe_password = password.replace("'", "'\"'\"'")
+    safe_query = query.replace("'", "'\"'\"'")
     db_flag = f"-d {database}" if database else ""
-    base_cmd = f"PGPASSWORD='{password}' psql -U {username} {db_flag} -c '{query}'"
-    return f"timeout {timeout} docker exec {container} sh -c \"{base_cmd}\" 2>&1"
+    # Use single quotes for outer shell command - safest for special chars
+    inner_cmd = f"PGPASSWORD='{safe_password}' psql -U {username} {db_flag} -c '{safe_query}'"
+    return f"timeout {timeout} docker exec {container} sh -c '{inner_cmd}' 2>&1"
+
+
 
 
 def _build_mysql_cmd(container: str, username: str, password: str, database: str | None, query: str, timeout: int) -> str:
     """Build MySQL command with proper authentication."""
+    safe_password = password.replace("'", "'\"'\"'")
+    safe_query = query.replace("'", "'\"'\"'")
     db_flag = database if database else ""
-    base_cmd = f"mysql -u {username} -p'{password}' {db_flag} -e '{query}'"
-    return f"timeout {timeout} docker exec {container} {base_cmd} 2>&1"
+    inner_cmd = f"mysql -u {username} -p'{safe_password}' {db_flag} -e '{safe_query}'"
+    return f"timeout {timeout} docker exec {container} sh -c '{inner_cmd}' 2>&1"
 
 
 def _build_cqlsh_cmd(container: str, username: str | None, password: str | None, query: str, timeout: int) -> str:
     """Build ScyllaDB/Cassandra cqlsh command with proper authentication."""
+    safe_query = query.replace("'", "'\"'\"'")
     auth_flags = ""
     if username:
         auth_flags += f" -u {username}"
     if password:
-        auth_flags += f" -p '{password}'"
-    return f"timeout {timeout} docker exec {container} cqlsh{auth_flags} -e '{query}' 2>&1"
+        safe_password = password.replace("'", "'\"'\"'")
+        auth_flags += f" -p '{safe_password}'"
+    inner_cmd = f"cqlsh{auth_flags} -e '{safe_query}'"
+    return f"timeout {timeout} docker exec {container} sh -c '{inner_cmd}' 2>&1"
 
 
 def _build_mongo_cmd(container: str, username: str | None, password: str | None, database: str, query: str, timeout: int) -> str:
     """Build MongoDB mongosh command with proper authentication."""
+    safe_query = query.replace("'", "'\"'\"'")
     if username and password:
-        auth = f"mongodb://{username}:{password}@localhost:27017/{database}?authSource=admin"
-        return f"timeout {timeout} docker exec {container} mongosh '{auth}' --quiet --eval '{query}' 2>&1"
+        from urllib.parse import quote_plus
+        safe_password = quote_plus(password)
+        auth = f"mongodb://{username}:{safe_password}@localhost:27017/{database}?authSource=admin"
+        inner_cmd = f"mongosh '{auth}' --quiet --eval '{safe_query}'"
+        return f"timeout {timeout} docker exec {container} sh -c '{inner_cmd}' 2>&1"
     else:
-        return f"timeout {timeout} docker exec {container} mongosh {database} --quiet --eval '{query}' 2>&1"
+        inner_cmd = f"mongosh {database} --quiet --eval '{safe_query}'"
+        return f"timeout {timeout} docker exec {container} sh -c '{inner_cmd}' 2>&1"
 
 
 def _parse_error(output: str, db_type: str) -> dict[str, Any] | None:
@@ -138,30 +158,30 @@ async def db_query(
     
     db_type_lower = db_type.lower()
     
-    # Escape single quotes in query for shell safety
-    safe_query = query.replace("'", "'\\''")
+    # Note: Query escaping is handled inside each _build_*_cmd function
     
     try:
         if db_type_lower == "postgres":
             if not username or not password:
                 result["error"] = "PostgreSQL requires username and password"
                 return result
-            cmd = _build_postgres_cmd(container_name, username, password, database, safe_query, timeout)
+            cmd = _build_postgres_cmd(container_name, username, password, database, query, timeout)
             
         elif db_type_lower == "mysql":
             if not username or not password:
                 result["error"] = "MySQL requires username and password"
                 return result
-            cmd = _build_mysql_cmd(container_name, username, password, database, safe_query, timeout)
+            cmd = _build_mysql_cmd(container_name, username, password, database, query, timeout)
             
         elif db_type_lower in ("scylladb", "cassandra"):
-            cmd = _build_cqlsh_cmd(container_name, username, password, safe_query, timeout)
+            cmd = _build_cqlsh_cmd(container_name, username, password, query, timeout)
             
         elif db_type_lower in ("mongodb", "mongo"):
             if not database:
                 result["error"] = "MongoDB requires a database name"
                 return result
-            cmd = _build_mongo_cmd(container_name, username, password, database, safe_query, timeout)
+            cmd = _build_mongo_cmd(container_name, username, password, database, query, timeout)
+
             
         else:
             result["error"] = f"Unsupported db_type: {db_type}. Supported: postgres, mysql, scylladb, cassandra, mongodb"
